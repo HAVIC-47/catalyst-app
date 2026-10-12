@@ -1,0 +1,63 @@
+name: catalyst
+description: "Catalyst - mood x money ledger (Android app for the Catalyst web app)"
+publish_to: 'none'
+
+# versionName+versionCode on Android. Bump the +number for every APK you install
+# over an older one.
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.18.3
+  provider: ^6.1.5+1
+  intl: ^0.20.3
+  shared_preferences: ^2.5.6
+  lucide_icons_flutter: ^3.1.25
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/licenses/
+
+  # Same type system as the web: Newsreader (display), Hanken Grotesk (body),
+  # IBM Plex Mono (figures + labels). Bundled so the app looks right offline.
+  fonts:
+    - family: Newsreader
+      fonts:
+        - asset: assets/fonts/Newsreader-400.ttf
+          weight: 400
+        - asset: assets/fonts/Newsreader-500.ttf
+          weight: 500
+        - asset: assets/fonts/Newsreader-600.ttf
+          weight: 600
+        - asset: assets/fonts/Newsreader-500Italic.ttf
+          weight: 500
+          style: italic
+    - family: HankenGrotesk
+      fonts:
+        - asset: assets/fonts/HankenGrotesk-400.ttf
+          weight: 400
+        - asset: assets/fonts/HankenGrotesk-500.ttf
+          weight: 500
+        - asset: assets/fonts/HankenGrotesk-600.ttf
+          weight: 600
+        - asset: assets/fonts/HankenGrotesk-700.ttf
+          weight: 700
+    - family: IBMPlexMono
+      fonts:
+        - asset: assets/fonts/IBMPlexMono-400.ttf
+          weight: 400
+        - asset: assets/fonts/IBMPlexMono-500.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexMono-600.ttf
+          weight: 600
