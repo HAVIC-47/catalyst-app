@@ -44,7 +44,9 @@ modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalys
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 
-**New in 1.2.0:** **To-do** and **To buy** boards — Jira-style columns you drag tickets across (press and
+**New in 1.2.1:** board columns move too — press and hold a column's title, then drag it left or right.
+
+**1.2.0:** **To-do** and **To buy** boards — Jira-style columns you drag tickets across (press and
 hold a ticket); **AI summaries and suggestions** for your money, savings, goals, bills, journal and mood, by
 week, month or year; and a new bottom bar — Calendar · Dashboard · **+** · Ledger · More, where **+** opens
 the memo scanner and Journal now lives in More. Install it over the older version — you stay logged in.
@@ -73,7 +75,8 @@ pull down to refresh, or just reopen the app.
   is added as its own expense, with any discount shared out. Reads Bengali and English, printed or handwritten.
 - **To-do and To buy** — Jira-style boards in More: status columns (To do → In progress → Done; To buy →
   In cart → Bought), numbered tickets with priority, due date, notes and — on to-buy lists — a price. Press and
-  hold a ticket to drag it within or across columns (the board scrolls when you reach an edge); tap it to edit.
+  hold a ticket to drag it within or across columns, or a column's title to move the column left or right (the
+  board scrolls when you reach an edge); tap a ticket to edit it.
 - **AI summaries and suggestions** — a weekly, monthly or yearly read of your ledger, savings, goals, bills,
   journal and mood, with suggestions to manage money, save more or feel better — on each of those screens and
   the dashboard. Written by Gemini on the web app's server and saved, so the web and the app show the same one.

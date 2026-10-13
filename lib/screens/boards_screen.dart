@@ -93,6 +93,9 @@ class _BoardsScreenState extends State<BoardsScreen> {
   // Drag and drop.
   String? _dragging; // ticket id
   (String, int)? _hover; // (column id, insert-before index)
+  String? _draggingColumn; // column id
+  int? _columnHover; // insert-before index among the board's columns
+  final _colKeys = <String, GlobalKey>{};
   Offset? _pointer; // global pointer position while dragging
   Timer? _autoScroll;
 
@@ -147,6 +150,50 @@ class _BoardsScreenState extends State<BoardsScreen> {
     setState(() => _hover = (columnId, index));
   }
 
+  // A column is picked up by its title (long press) and dropped between columns.
+  void _startColumnDrag(String id) {
+    setState(() {
+      _draggingColumn = id;
+      _columnHover = null;
+    });
+    _autoScroll?.cancel();
+    _autoScroll = Timer.periodic(const Duration(milliseconds: 16), (_) => _edgeScroll());
+  }
+
+  void _endColumnDrag() {
+    _autoScroll?.cancel();
+    _autoScroll = null;
+    if (!mounted) return;
+    setState(() {
+      _draggingColumn = null;
+      _columnHover = null;
+      _pointer = null;
+    });
+    _snapBoard();
+  }
+
+  void _setColumnHover(int index) {
+    if (_draggingColumn == null || _columnHover == index) return;
+    setState(() => _columnHover = index);
+  }
+
+  /// Drops column [id] before position [_columnHover] (of the columns as shown).
+  Future<void> _dropColumn(String id) async {
+    final hover = _columnHover;
+    if (hover == null) return;
+    final app = context.read<AppState>();
+    final col = app.boardColumns.where((c) => c.id == id).firstOrNull;
+    if (col == null) return;
+    final from = app.columnsOf(col.boardId).indexWhere((c) => c.id == id);
+    final to = hover > from ? hover - 1 : hover;
+    if (to == from) return; // dropped where it started
+    try {
+      await app.placeColumn(id, to);
+    } catch (_) {
+      if (mounted) showError(context, "Couldn't move the column — try again.");
+    }
+  }
+
   /// Holding a ticket near an edge scrolls the board sideways and the page up or down.
   void _edgeScroll() {
     final pt = _pointer;
@@ -163,6 +210,26 @@ class _BoardsScreenState extends State<BoardsScreen> {
 
     nudge(_board, pull(rect.right - pt.dx) - pull(pt.dx - rect.left));
     nudge(_page, pull(rect.bottom - pt.dy) - pull(pt.dy - rect.top));
+    if (_draggingColumn != null) _columnHoverAt(pt);
+  }
+
+  /// A finger held still at the edge sends no move events while the board scrolls
+  /// under it, so the landing spot for a column is worked out from where it is now.
+  void _columnHoverAt(Offset pt) {
+    final app = context.read<AppState>();
+    final col = app.boardColumns.where((c) => c.id == _draggingColumn).firstOrNull;
+    if (col == null) return;
+    final cols = app.columnsOf(col.boardId);
+    for (final (i, c) in cols.indexed) {
+      final box = _colKeys[c.id]?.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final left = box.localToGlobal(Offset.zero).dx;
+      if (pt.dx < left + box.size.width + _gap / 2) {
+        _setColumnHover(pt.dx < left + box.size.width / 2 ? i : i + 1);
+        return;
+      }
+    }
+    _setColumnHover(cols.length); // past the last column
   }
 
   void _snapBoard() {
@@ -288,7 +355,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
     return Listener(
       key: _viewport,
       onPointerMove: (e) {
-        if (_dragging != null) _pointer = e.position;
+        if (_dragging != null || _draggingColumn != null) _pointer = e.position;
       },
       child: RefreshIndicator(
         onRefresh: app.load,
@@ -357,7 +424,13 @@ class _BoardsScreenState extends State<BoardsScreen> {
               padding: const EdgeInsets.only(right: _gap),
               child: _column(app, board, c, i, cols, colW),
             ),
-          _AddColumnTile(width: colW, onTap: () => _addColumn(board.id)),
+          // Holding a column over "Add column" puts it last.
+          DragTarget<_ColumnDrag>(
+            onWillAcceptWithDetails: (_) => true,
+            onMove: (_) => _setColumnHover(cols.length),
+            onAcceptWithDetails: (d) => _dropColumn(d.data.id),
+            builder: (context, candidate, rejected) => _AddColumnTile(width: colW, onTap: () => _addColumn(board.id)),
+          ),
         ],
       ),
     );
@@ -369,6 +442,12 @@ class _BoardsScreenState extends State<BoardsScreen> {
     final done = cols.length > 1 && index == cols.length - 1;
     final total = board.kind == BoardKind.shopping ? items.fold<double>(0, (s, t) => s + (t.amount ?? 0)) : 0.0;
     final target = _dragging != null && _hover?.$1 == c.id;
+    final colKey = _colKeys.putIfAbsent(c.id, GlobalKey.new);
+    // Where a dragged column would land, shown as a line in the gap — only when it
+    // would actually move.
+    final moving = _draggingColumn == null ? -1 : cols.indexWhere((x) => x.id == _draggingColumn);
+    final slotBefore = moving >= 0 && _columnHover == index && index != moving && index != moving + 1;
+    final slotAfter = moving >= 0 && index == cols.length - 1 && _columnHover == cols.length && moving != cols.length - 1;
 
     // Insertion slots between cards keep a fixed height, so the line showing where
     // a ticket will land never shifts the layout under your finger.
@@ -383,7 +462,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
           ),
         );
 
-    return DragTarget<String>(
+    final ticketTarget = DragTarget<String>(
       onWillAcceptWithDetails: (_) => true,
       // Only reached when not over a card: above the first card lands at the top,
       // anywhere else at the bottom.
@@ -412,6 +491,32 @@ class _BoardsScreenState extends State<BoardsScreen> {
               first: index == 0,
               last: index == cols.length - 1,
               onMenu: (a) => _columnMenu(a, c, items.length),
+              // The title is the column's handle: long press, then drag sideways.
+              wrapTitle: (title) => LongPressDraggable<_ColumnDrag>(
+                data: _ColumnDrag(c.id),
+                delay: const Duration(milliseconds: 280),
+                feedback: Material(
+                  type: MaterialType.transparency,
+                  child: Transform.rotate(
+                    angle: 0.02,
+                    child: _ColumnPreview(column: c, items: items, kind: board.kind, total: total, width: width),
+                  ),
+                ),
+                childWhenDragging: title,
+                onDragStarted: () => _startColumnDrag(c.id),
+                onDragEnd: (_) => _endColumnDrag(),
+                child: Semantics(
+                  label: '${c.name} column',
+                  hint: 'Long press and drag to move',
+                  // Screen readers move columns with actions instead of dragging.
+                  customSemanticsActions: {
+                    if (index > 0) const CustomSemanticsAction(label: 'Move left'): () => _columnMenu('left', c, items.length),
+                    if (index < cols.length - 1)
+                      const CustomSemanticsAction(label: 'Move right'): () => _columnMenu('right', c, items.length),
+                  },
+                  child: ExcludeSemantics(child: title),
+                ),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -439,6 +544,36 @@ class _BoardsScreenState extends State<BoardsScreen> {
             _QuickAdd(key: ValueKey('add-${c.id}'), columnId: c.id, kind: board.kind),
           ],
         ),
+      ),
+    );
+
+    Widget columnSlot({required bool before}) => Positioned(
+          top: 0,
+          bottom: 0,
+          left: before ? -(_gap / 2) - 1.5 : null,
+          right: before ? null : -(_gap / 2) - 1.5,
+          child: Container(width: 3, decoration: BoxDecoration(color: p.accent, borderRadius: BorderRadius.circular(2))),
+        );
+
+    return DragTarget<_ColumnDrag>(
+      key: colKey,
+      onWillAcceptWithDetails: (_) => true,
+      // Left half of a column: land before it; right half: after it.
+      onMove: (d) {
+        final box = colKey.currentContext?.findRenderObject() as RenderBox?;
+        if (box == null || !box.hasSize) return;
+        final x = _pointer?.dx ?? d.offset.dx;
+        final mid = box.localToGlobal(Offset.zero).dx + box.size.width / 2;
+        _setColumnHover(x < mid ? index : index + 1);
+      },
+      onAcceptWithDetails: (d) => _dropColumn(d.data.id),
+      builder: (context, candidate, rejected) => Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Opacity(opacity: _draggingColumn == c.id ? 0.35 : 1, child: ticketTarget),
+          if (slotBefore) columnSlot(before: true),
+          if (slotAfter) columnSlot(before: false),
+        ],
       ),
     );
   }
@@ -588,7 +723,15 @@ PopupMenuItem<String> _menuItem(BuildContext context, String value, IconData ico
 }
 
 class _ColumnHeader extends StatelessWidget {
-  const _ColumnHeader({required this.column, required this.count, required this.total, required this.first, required this.last, required this.onMenu});
+  const _ColumnHeader({
+    required this.column,
+    required this.count,
+    required this.total,
+    required this.first,
+    required this.last,
+    required this.onMenu,
+    this.wrapTitle,
+  });
 
   final BoardColumn column;
   final int count;
@@ -596,6 +739,7 @@ class _ColumnHeader extends StatelessWidget {
   final bool first;
   final bool last;
   final ValueChanged<String> onMenu;
+  final Widget Function(Widget title)? wrapTitle; // e.g. the drag handle
 
   @override
   Widget build(BuildContext context) {
@@ -604,6 +748,29 @@ class _ColumnHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 4, 0, 0),
       child: Row(children: [
         Expanded(
+          child: wrapTitle?.call(_title(p)) ?? _title(p),
+        ),
+        PopupMenuButton<String>(
+          tooltip: '${column.name} column options',
+          icon: Icon(LucideIcons.ellipsis, size: 18, color: p.muted(0.45)),
+          onSelected: onMenu,
+          itemBuilder: (_) => [
+            _menuItem(context, 'rename', LucideIcons.pencil, 'Rename'),
+            _menuItem(context, 'left', LucideIcons.arrowLeft, 'Move left', enabled: !first),
+            _menuItem(context, 'right', LucideIcons.arrowRight, 'Move right', enabled: !last),
+            _menuItem(context, 'delete', LucideIcons.trash2, 'Delete column', danger: true),
+          ],
+        ),
+      ]),
+    );
+  }
+
+  // Name, count and total. Opaque to touches across its whole width, so a long
+  // press anywhere on the title picks the column up.
+  Widget _title(Palette p) => ColoredBox(
+        color: Colors.transparent,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: Row(children: [
             Flexible(
               child: Text(
@@ -625,18 +792,52 @@ class _ColumnHeader extends StatelessWidget {
             ],
           ]),
         ),
-        PopupMenuButton<String>(
-          tooltip: '${column.name} column options',
-          icon: Icon(LucideIcons.ellipsis, size: 18, color: p.muted(0.45)),
-          onSelected: onMenu,
-          itemBuilder: (_) => [
-            _menuItem(context, 'rename', LucideIcons.pencil, 'Rename'),
-            _menuItem(context, 'left', LucideIcons.arrowLeft, 'Move left', enabled: !first),
-            _menuItem(context, 'right', LucideIcons.arrowRight, 'Move right', enabled: !last),
-            _menuItem(context, 'delete', LucideIcons.trash2, 'Delete column', danger: true),
+      );
+}
+
+/// What a dragged column carries (its own type, so ticket drop zones ignore it).
+class _ColumnDrag {
+  const _ColumnDrag(this.id);
+  final String id;
+}
+
+/// The column under your finger while it's being moved: a still copy, lifted.
+class _ColumnPreview extends StatelessWidget {
+  const _ColumnPreview({required this.column, required this.items, required this.kind, required this.total, required this.width});
+
+  final BoardColumn column;
+  final List<Ticket> items;
+  final BoardKind kind;
+  final double total;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Container(
+      width: width,
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.accentA(0.45)),
+        boxShadow: const [BoxShadow(color: Color(0x59000000), blurRadius: 26, offset: Offset(0, 14), spreadRadius: -8)],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: _ColumnHeader(column: column, count: items.length, total: total, first: true, last: true, onMenu: (_) {}),
+          ),
+          for (final t in items.take(6)) ...[
+            _TicketCard(ticket: t, kind: kind, done: false),
+            const SizedBox(height: 8),
           ],
-        ),
-      ]),
+          if (items.length > 6) Text('+${items.length - 6} more', style: bodyStyle(p, 12, color: p.muted(0.45))),
+        ],
+      ),
     );
   }
 }

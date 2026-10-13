@@ -375,16 +375,39 @@ class AppState extends ChangeNotifier {
     if (col == null) return;
     final cols = columnsOf(col.boardId);
     final i = cols.indexWhere((c) => c.id == id);
-    final j = i + dir;
-    if (j < 0 || j >= cols.length) return;
-    final swapped = [...cols]
-      ..[i] = cols[j]
-      ..[j] = cols[i];
-    // Renumber the whole board so equal or gapped sorts can't block the swap.
-    final changes = {for (final (k, c) in swapped.indexed) if (c.sort != k) c.id: k};
-    await Future.wait([for (final e in changes.entries) Repo.updateBoardColumn(e.key, sort: e.value)]);
+    if (i + dir < 0 || i + dir >= cols.length) return;
+    await placeColumn(id, i + dir);
+  }
+
+  /// Puts column [id] at [index] among its board's columns (renumbering them all).
+  Future<void> placeColumn(String id, int index) async {
+    final col = boardColumns.where((c) => c.id == id).firstOrNull;
+    if (col == null) return;
+    final cols = columnsOf(col.boardId);
+    final from = cols.indexWhere((c) => c.id == id);
+    final to = index.clamp(0, cols.length - 1);
+    if (from == to) return;
+    final order = [...cols]
+      ..removeAt(from)
+      ..insert(to, col);
+    // Renumber the whole board so equal or gapped sorts can't block the move.
+    final changes = {for (final (k, c) in order.indexed) if (c.sort != k) c.id: k};
+    // Optimistic: the column stays where it was dropped while the writes go out.
+    final before = boardColumns;
     boardColumns = [for (final c in boardColumns) changes.containsKey(c.id) ? c.copyWith(sort: changes[c.id]) : c];
     notifyListeners();
+    try {
+      await Future.wait([for (final e in changes.entries) Repo.updateBoardColumn(e.key, sort: e.value)]);
+    } catch (_) {
+      // Put the board back the way the database has it, then let the caller say so.
+      try {
+        boardColumns = await Repo.listBoardColumns();
+      } catch (_) {
+        boardColumns = before;
+      }
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> removeColumn(String id) async {
