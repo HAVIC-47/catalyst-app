@@ -20,8 +20,13 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
   <img src="docs/screenshots/year.png" width="200" alt="Calendar — year heatmap" />
 </p>
 <p align="center">
+  <img src="docs/screenshots/todo.png" width="200" alt="To-do board — columns of numbered tickets" />
+  <img src="docs/screenshots/to-buy.png" width="200" alt="To buy list — items with prices and column totals" />
+  <img src="docs/screenshots/memo-scan.png" width="200" alt="Memo scanner — items read from a receipt, ready to add" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/ai-summary.png" width="200" alt="AI money summary with suggestions on the ledger" />
   <img src="docs/screenshots/mood-entry.png" width="200" alt="Logging a mood with context tags" />
-  <img src="docs/screenshots/ledger-light.png" width="200" alt="Ledger in light mode" />
   <img src="docs/screenshots/calendar-light.png" width="200" alt="Calendar in light mode" />
 </p>
 
@@ -33,7 +38,7 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
    file manager — allow it, then tap **Install**.
 3. Log in with your Catalyst account, or create one.
 
-The download is a universal APK (~55 MB) that runs on any Android phone. A smaller build for
+The download is a universal APK (~56 MB) that runs on any Android phone. A smaller build for
 modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst-arm64.apk) (~21 MB), is attached to every
 [release](https://github.com/HAVIC-47/catalyst-app/releases).
 
