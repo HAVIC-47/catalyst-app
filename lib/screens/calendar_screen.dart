@@ -128,53 +128,83 @@ class _CalendarScreenState extends State<CalendarScreen> {
       maxFlow = math.max(maxFlow, v.income + v.expense);
     });
     final net = income - expense;
-    final screenH = MediaQuery.of(context).size.height;
-    final titleSize = (screenH * 0.056).clamp(32.0, 48.0);
+    final screen = MediaQuery.of(context).size;
+    // Scales with screen height (and width) so short phones keep room for the grid
+    // and the active-days count still fits beside the title.
+    final titleSize = math.min(screen.height * 0.044, screen.width * 0.084).clamp(26.0, 36.0);
 
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Label(app.loading ? 'Calendar · loading…' : 'Calendar · $count active days'),
-        const SizedBox(height: 4),
-        Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: displayStyle(p, titleSize).copyWith(height: 1.0)),
+        // Title with the active-days count on its baseline; the count wraps below
+        // only when the screen is too narrow for both.
+        Text.rich(
+          TextSpan(children: [
+            TextSpan(text: label, style: displayStyle(p, titleSize).copyWith(height: 1.0)),
+            // ~12px en space: a wrapped count then starts flush left, not indented.
+            TextSpan(text: '\u2002', style: displayStyle(p, titleSize * 0.75).copyWith(height: 1.0)),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: Label(app.loading ? 'loading…' : '$count active ${count == 1 ? 'day' : 'days'}'),
+            ),
+          ]),
+        ),
         const SizedBox(height: 8),
         Text.rich(
           TextSpan(children: [
-            const TextSpan(text: 'NET '),
+            const TextSpan(text: 'NET\u00A0'),
             TextSpan(text: formatCurrency(net, sign: true), style: TextStyle(color: net >= 0 ? p.income : p.expense)),
-            TextSpan(text: '   ·   ', style: TextStyle(color: p.muted(0.3))),
-            const TextSpan(text: 'IN '),
+            TextSpan(text: '  ·  ', style: TextStyle(color: p.muted(0.3))),
+            const TextSpan(text: 'IN\u00A0'),
             TextSpan(text: compactCurrency(income), style: TextStyle(color: p.income)),
-            const TextSpan(text: '   OUT '),
+            const TextSpan(text: '  OUT\u00A0'),
             TextSpan(text: compactCurrency(expense), style: TextStyle(color: p.expense)),
           ]),
-          style: monoStyle(p, 12, color: p.muted(0.45)),
+          style: monoStyle(p, 14, color: p.muted(0.45)),
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            SegTabs<CalRange>(
-              options: CalRange.values,
-              value: _range,
-              label: (r) => '${r.name[0].toUpperCase()}${r.name.substring(1)}',
-              onChanged: (r) => setState(() {
-                _range = r;
-                _cursor = DateTime.now();
-              }),
-            ),
-            const Spacer(),
-            HairlineIconButton(icon: LucideIcons.chevronLeft, size: 38, tooltip: 'Previous', onPressed: () => _step(-1)),
-            const SizedBox(width: 6),
-            HairlineButton(
-              height: 38,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              onPressed: () => setState(() => _cursor = DateTime.now()),
-              child: Text('TODAY', style: monoStyle(p, 11.5, color: p.muted(0.7), letterSpacing: 1.6)),
-            ),
-            const SizedBox(width: 6),
-            HairlineIconButton(icon: LucideIcons.chevronRight, size: 38, tooltip: 'Next', onPressed: () => _step(1)),
-          ],
-        ),
+        // Range tabs left, prev / today / next right. Narrow phones (or a large
+        // display-size setting) get a tighter nav, and the tabs shrink a little
+        // rather than push "next" off the screen.
+        LayoutBuilder(builder: (context, box) {
+          final tight = box.maxWidth < 340;
+          final btn = tight ? 34.0 : 38.0;
+          final gap = SizedBox(width: tight ? 4 : 6);
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: SegTabs<CalRange>(
+                    options: CalRange.values,
+                    value: _range,
+                    label: (r) => '${r.name[0].toUpperCase()}${r.name.substring(1)}',
+                    onChanged: (r) => setState(() {
+                      _range = r;
+                      _cursor = DateTime.now();
+                    }),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                HairlineIconButton(icon: LucideIcons.chevronLeft, size: btn, tooltip: 'Previous', onPressed: () => _step(-1)),
+                gap,
+                HairlineButton(
+                  height: btn,
+                  padding: EdgeInsets.symmetric(horizontal: tight ? 8 : 12),
+                  onPressed: () => setState(() => _cursor = DateTime.now()),
+                  child: Text('TODAY', style: monoStyle(p, 11.5, color: p.muted(0.7), letterSpacing: 1.6)),
+                ),
+                gap,
+                HairlineIconButton(icon: LucideIcons.chevronRight, size: btn, tooltip: 'Next', onPressed: () => _step(1)),
+              ]),
+            ],
+          );
+        }),
         const SizedBox(height: 12),
         _Legend(palette: p),
         const SizedBox(height: 10),
@@ -415,15 +445,13 @@ class _MonthCell extends StatelessWidget {
                         // Roomy cells: separate out / in lines; short ones: one net line.
                         if (hasFlow && room >= 48) ...[
                           if (d.expense > 0)
-                            Text('−${compactCurrency(d.expense)}', maxLines: 1, overflow: TextOverflow.clip, style: amountStyle.copyWith(color: p.expense)),
+                            _Amount('−${compactCurrency(d.expense)}', amountStyle.copyWith(color: p.expense)),
                           if (d.income > 0)
-                            Text('+${compactCurrency(d.income)}', maxLines: 1, overflow: TextOverflow.clip, style: amountStyle.copyWith(color: p.income)),
+                            _Amount('+${compactCurrency(d.income)}', amountStyle.copyWith(color: p.income)),
                         ] else if (hasFlow && room >= 30)
-                          Text(
+                          _Amount(
                             '${d.net >= 0 ? '+' : ''}${compactCurrency(d.net)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.clip,
-                            style: amountStyle.copyWith(color: d.net >= 0 ? p.income : p.expense),
+                            amountStyle.copyWith(color: d.net >= 0 ? p.income : p.expense),
                           ),
                       ],
                     ),
@@ -436,6 +464,22 @@ class _MonthCell extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One line in a day cell. Never wraps (a wrapped "−৳13.3K" would show only the
+/// sign); shrinks to fit a narrow cell instead.
+class _Amount extends StatelessWidget {
+  const _Amount(this.text, this.style);
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(text, maxLines: 1, softWrap: false, style: style),
+      );
 }
 
 class _WeekView extends StatelessWidget {
@@ -480,11 +524,11 @@ class _WeekView extends StatelessWidget {
                                 if (c?.mood != null) MoodFace(c!.mood!, size: 20),
                                 const Spacer(),
                                 if ((c?.expense ?? 0) > 0)
-                                  Text('−${compactCurrency(c!.expense)}', maxLines: 1, overflow: TextOverflow.clip, style: style.copyWith(color: p.expense)),
+                                  _Amount('−${compactCurrency(c!.expense)}', style.copyWith(color: p.expense)),
                                 if ((c?.income ?? 0) > 0)
-                                  Text('+${compactCurrency(c!.income)}', maxLines: 1, overflow: TextOverflow.clip, style: style.copyWith(color: p.income)),
+                                  _Amount('+${compactCurrency(c!.income)}', style.copyWith(color: p.income)),
                                 if (c?.mood != null)
-                                  Text(moodPreset(c!.mood!).label, maxLines: 1, overflow: TextOverflow.clip, style: style.copyWith(color: p.muted(0.45))),
+                                  _Amount(moodPreset(c!.mood!).label, style.copyWith(color: p.muted(0.45))),
                               ],
                             );
                           }),
