@@ -21,6 +21,7 @@ import 'entry_sheet.dart';
 import 'goals_screen.dart';
 import 'journal_screen.dart';
 import 'ledger_screen.dart';
+import 'memo_sheet.dart';
 import 'settings_screen.dart';
 
 enum Section { calendar, dashboard, ledger, journal, budgets, goals, bills, settings }
@@ -153,6 +154,18 @@ class _TopBar extends StatelessWidget {
           const Label('Today'),
           const SizedBox(width: 8),
           Text(fmt(DateTime.now(), 'EEE, MMM d, yyyy'), style: monoStyle(p, 14, color: p.muted(0.7))),
+          const Spacer(),
+          // Scan a memo: photo -> one expense per item.
+          SizedBox(
+            width: 34,
+            child: PrimaryButton(
+              label: '',
+              icon: LucideIcons.plus,
+              height: 34,
+              semanticLabel: 'Scan a memo',
+              onPressed: () => openMemoScanner(context),
+            ),
+          ),
         ],
       ),
     );

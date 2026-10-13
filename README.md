@@ -4,11 +4,11 @@
 
 **Money meets _mood_.** Track every taka against how the day actually felt.
 
-[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.0.1%20APK-B2462C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.0.1/Catalyst.apk)
+[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.1.0%20APK-B2462C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.1.0/Catalyst.apk)
 &nbsp;
 [![Latest release](https://img.shields.io/github/v/release/HAVIC-47/catalyst-app?style=for-the-badge&color=181512&label=version)](https://github.com/HAVIC-47/catalyst-app/releases/latest)
 
-**Direct download (v1.0.1):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.0.1/Catalyst.apk
+**Direct download (v1.1.0):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.1.0/Catalyst.apk
 
 Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https://catalyst-hishab.vercel.app)
 
@@ -27,21 +27,21 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
 
 ## Install
 
-1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.0.1/Catalyst.apk)**
+1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.1.0/Catalyst.apk)**
    (or download it on a computer and send it over USB, Drive, Telegram…).
 2. Open the downloaded `Catalyst.apk`. Android asks once to allow installs from your browser or
    file manager — allow it, then tap **Install**.
 3. Log in with your Catalyst account, or create one.
 
-The download is a universal APK (~54 MB) that runs on any Android phone. A smaller build for
-modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.0.1/Catalyst-arm64.apk) (~20 MB), is attached to every
+The download is a universal APK (~55 MB) that runs on any Android phone. A smaller build for
+modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.1.0/Catalyst-arm64.apk) (~21 MB), is attached to every
 [release](https://github.com/HAVIC-47/catalyst-app/releases).
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 
-**1.0.1 is a security update** — your login is now kept in encrypted storage (Android Keystore),
-app data is left out of cloud backups, and the app only connects over HTTPS. Install it over 1.0.0;
-you stay logged in. [Release notes](https://github.com/HAVIC-47/catalyst-app/releases/tag/v1.0.1)
+**New in 1.1.0: the memo scanner.** Tap **+** in the top bar, take or choose a photo of a memo, check what
+it found, and every item is added as its own expense. Install it over the older version — you stay logged in.
+[Release notes](https://github.com/HAVIC-47/catalyst-app/releases/tag/v1.1.0)
 
 ## One account, two apps
 
@@ -61,6 +61,9 @@ pull down to refresh, or just reopen the app.
   Settings — the choice is shared with the web app.
 - **Ledger** — every transaction grouped by day, with search (note, category, place, amount, even
   "october" or "monday") and filters by type, period or date range, category and amount.
+- **Memo scanner** — tap **+** in the top bar, take or choose a photo of a memo/receipt, check what it
+  found (shop, date, every item with its category), and each item — plus VAT or service charge — is added as
+  its own expense, with any discount shared out. Reads Bengali and English, printed or handwritten.
 - **Quick entry** — expense and income in one go, five moods with context tags (work, family, travel…),
   and savings; each with a time, place and note.
 - **Budgets** — monthly limits per category that fill up as you spend and turn red when you go over.
@@ -100,6 +103,10 @@ app's `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`:
 { "SUPABASE_URL": "https://YOUR-PROJECT.supabase.co", "SUPABASE_ANON_KEY": "your-anon-key" }
 ```
 
+The memo scanner sends photos to the web app's `/api/scan-memo` (set `API_BASE_URL` to point it elsewhere;
+it defaults to the live site) with the user's login token. The Gemini key lives only on that server — it is
+never in this repo or the APK.
+
 The anon key is public by design; every table is protected by row-level security, so each account
 only ever sees its own rows. The database schema and its hardening live in the web repo
 (`db/supabase.sql`, `db/security.sql`).
@@ -120,6 +127,7 @@ lib/
   data/repo.dart       Supabase queries — mirror the web's src/lib/db
   data/app_state.dart  central store — mirrors the web's useAppData
   data/secure_session_storage.dart  login session in Keystore-encrypted storage
+  screens/memo_sheet.dart  memo scanner: photo -> review -> one expense per item
   util/limits.dart     text length limits (same as the database checks)
   theme/               design tokens (same values as the web's globals.css)
   widgets/             cards, buttons, segmented controls, charts, mood faces

@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # versionName+versionCode on Android. Bump the +number for every APK you install
 # over an older one.
-version: 1.0.1+2
+version: 1.1.0+4
 
 environment:
   sdk: ^3.13.5
@@ -18,6 +18,8 @@ dependencies:
   shared_preferences: ^2.5.6
   lucide_icons_flutter: ^3.1.25
   flutter_secure_storage: ^11.2.0
+  image_picker: ^1.2.4
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:
