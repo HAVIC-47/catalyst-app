@@ -16,14 +16,16 @@ import 'ui.dart';
 
 const _fallback = Color(0xFF7A746A);
 
-/// Day / Week / Month / Year + prev / Now / next — the dashboard's single period selector.
+/// Day / Week / Month / Year + prev / Now / next — the dashboard's single period
+/// selector. [ranges] narrows the choice (the AI summaries offer Week / Month / Year).
 class RangeControls extends StatelessWidget {
-  const RangeControls({super.key, required this.range, required this.offset, required this.onRange, required this.onOffset});
+  const RangeControls({super.key, required this.range, required this.offset, required this.onRange, required this.onOffset, this.ranges = Range.values});
 
   final Range range;
   final int offset;
   final ValueChanged<Range> onRange;
   final ValueChanged<int> onOffset;
+  final List<Range> ranges;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +37,7 @@ class RangeControls extends StatelessWidget {
       runSpacing: 8,
       children: [
         SegTabs<Range>(
-          options: Range.values,
+          options: ranges,
           value: range,
           compact: true,
           label: rangeName,

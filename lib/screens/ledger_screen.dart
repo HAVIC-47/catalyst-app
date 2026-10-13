@@ -6,11 +6,13 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../data/app_state.dart';
+import '../data/insights.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
 import '../util/range.dart';
+import '../widgets/ai_insights.dart';
 import '../widgets/ui.dart';
 import 'entry_sheet.dart';
 
@@ -164,6 +166,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
             joined: true,
             trailing: PrimaryButton(label: '+ Add', height: 42, onPressed: () => openEntry(context)),
           ),
+          const AiInsightsCard(topics: [InsightTopic.ledger]),
           Row(
             children: [
               Expanded(

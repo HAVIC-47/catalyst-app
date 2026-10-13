@@ -5,11 +5,13 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../data/app_state.dart';
+import '../data/insights.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
 import '../util/limits.dart';
+import '../widgets/ai_insights.dart';
 import '../widgets/mood_face.dart';
 import '../widgets/ui.dart';
 
@@ -86,6 +88,7 @@ class _JournalScreenState extends State<JournalScreen> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           PageHeader(kicker: 'Journal · ${fmt(DateTime.now(), 'EEEE, MMM d')}', title: 'Daily', accent: 'log.'),
+          const AiInsightsCard(topics: [InsightTopic.journal, InsightTopic.mood]),
           CardBox(
             margin: const EdgeInsets.only(bottom: 16),
             child: Column(

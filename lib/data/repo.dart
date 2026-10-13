@@ -177,6 +177,50 @@ class Repo {
 
   static Future<void> deleteActivityLog(String id) => _db.from('activity_logs').delete().eq('id', id);
 
+  // ---- boards (to-do + to-buy), their columns and tickets
+  static Future<List<Board>> listBoards() async => (await _db
+          .from('boards')
+          .select()
+          .order('sort', ascending: true)
+          .order('created_at', ascending: true))
+      .map(Board.fromRow)
+      .toList();
+
+  static Future<Board> addBoard({required String name, required BoardKind kind, required int sort}) async =>
+      Board.fromRow(await _db.from('boards').insert({'name': name, 'kind': kind.name, 'sort': sort}).select().single());
+
+  static Future<void> renameBoard(String id, String name) => _db.from('boards').update({'name': name}).eq('id', id);
+
+  /// The database removes the board's columns and tickets too.
+  static Future<void> deleteBoard(String id) => _db.from('boards').delete().eq('id', id);
+
+  static Future<List<BoardColumn>> listBoardColumns() async =>
+      (await _db.from('board_columns').select().order('sort', ascending: true)).map(BoardColumn.fromRow).toList();
+
+  static Future<List<BoardColumn>> addBoardColumns(String boardId, List<(String, int)> columns) async {
+    final rows = await _db
+        .from('board_columns')
+        .insert([for (final (name, sort) in columns) {'board_id': boardId, 'name': name, 'sort': sort}])
+        .select();
+    return rows.map(BoardColumn.fromRow).toList()..sort((a, b) => a.sort.compareTo(b.sort));
+  }
+
+  static Future<void> updateBoardColumn(String id, {String? name, int? sort}) =>
+      _db.from('board_columns').update({'name': ?name, 'sort': ?sort}).eq('id', id);
+
+  /// The database removes the column's tickets too.
+  static Future<void> deleteBoardColumn(String id) => _db.from('board_columns').delete().eq('id', id);
+
+  static Future<List<Ticket>> listTickets() async =>
+      (await _db.from('tickets').select().order('sort', ascending: true)).map(Ticket.fromRow).toList();
+
+  static Future<Ticket> addTicket(Map<String, dynamic> row) async =>
+      Ticket.fromRow(await _db.from('tickets').insert(row).select().single());
+
+  static Future<void> updateTicket(String id, Map<String, dynamic> patch) => _db.from('tickets').update(patch).eq('id', id);
+
+  static Future<void> deleteTicket(String id) => _db.from('tickets').delete().eq('id', id);
+
   // ---- UI preferences (auth user metadata — shared with the web app)
   static Future<Map<String, dynamic>> loadPrefs() async {
     final res = await _db.auth.getUser();

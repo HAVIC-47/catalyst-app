@@ -261,6 +261,130 @@ class ActivityLog {
       );
 }
 
+// ---- boards: Jira-style to-do (tasks) and to-buy (shopping) boards share one UI.
+
+enum BoardKind { todo, shopping }
+
+BoardKind boardKindFrom(String? s) => s == 'shopping' ? BoardKind.shopping : BoardKind.todo;
+
+class Board {
+  const Board({required this.id, required this.name, required this.kind, required this.sort});
+
+  final String id;
+  final String name;
+  final BoardKind kind;
+  final int sort;
+
+  factory Board.fromRow(Map<String, dynamic> r) => Board(
+        id: r['id'] as String,
+        name: (r['name'] as String?) ?? '',
+        kind: boardKindFrom(r['kind'] as String?),
+        sort: (r['sort'] as num?)?.toInt() ?? 0,
+      );
+
+  Board copyWith({String? name}) => Board(id: id, name: name ?? this.name, kind: kind, sort: sort);
+}
+
+/// A board's status column ("To do", "In progress", "Done"…), ordered by sort.
+class BoardColumn {
+  const BoardColumn({required this.id, required this.boardId, required this.name, required this.sort});
+
+  final String id;
+  final String boardId;
+  final String name;
+  final int sort;
+
+  factory BoardColumn.fromRow(Map<String, dynamic> r) => BoardColumn(
+        id: r['id'] as String,
+        boardId: r['board_id'] as String,
+        name: (r['name'] as String?) ?? '',
+        sort: (r['sort'] as num?)?.toInt() ?? 0,
+      );
+
+  BoardColumn copyWith({String? name, int? sort}) =>
+      BoardColumn(id: id, boardId: boardId, name: name ?? this.name, sort: sort ?? this.sort);
+}
+
+enum TicketPriority { high, medium, low }
+
+TicketPriority priorityFrom(String? s) => switch (s) {
+      'high' => TicketPriority.high,
+      'low' => TicketPriority.low,
+      _ => TicketPriority.medium,
+    };
+
+class Ticket {
+  const Ticket({
+    required this.id,
+    required this.boardId,
+    required this.columnId,
+    required this.number,
+    required this.title,
+    required this.description,
+    required this.priority,
+    required this.dueOn,
+    required this.amount,
+    required this.sort,
+  });
+
+  final String id;
+  final String boardId;
+  final String columnId;
+  final int number; // per-board, shown as #12
+  final String title;
+  final String description;
+  final TicketPriority priority;
+  final String? dueOn; // yyyy-mm-dd
+  final double? amount; // price, for to-buy items
+  final double sort; // order inside the column (float: a move rewrites one row)
+
+  factory Ticket.fromRow(Map<String, dynamic> r) => Ticket(
+        id: r['id'] as String,
+        boardId: r['board_id'] as String,
+        columnId: r['column_id'] as String,
+        number: (r['number'] as num?)?.toInt() ?? 0,
+        title: (r['title'] as String?) ?? '',
+        description: (r['description'] as String?) ?? '',
+        priority: priorityFrom(r['priority'] as String?),
+        dueOn: r['due_on'] as String?,
+        amount: r['amount'] == null ? null : _num(r['amount']),
+        sort: (r['sort'] as num?)?.toDouble() ?? 0,
+      );
+
+  Ticket moved(String columnId, double sort) => Ticket(
+      id: id, boardId: boardId, columnId: columnId, number: number, title: title,
+      description: description, priority: priority, dueOn: dueOn, amount: amount, sort: sort);
+
+  /// The editable fields, replaced wholesale (null clears the due date / price).
+  Ticket edited({required String title, required String description, required TicketPriority priority, required String? dueOn, required double? amount}) =>
+      Ticket(id: id, boardId: boardId, columnId: columnId, number: number, title: title,
+          description: description, priority: priority, dueOn: dueOn, amount: amount, sort: sort);
+}
+
+/// Columns a new board starts with (renamable, and more can be added).
+const defaultBoardColumns = {
+  BoardKind.todo: ['To do', 'In progress', 'Done'],
+  BoardKind.shopping: ['To buy', 'In cart', 'Bought'],
+};
+
+const sortStep = 1024.0;
+
+/// A sort value between two neighbours (either may be missing); null when they
+/// are too close to split — renumber the column instead. Same rule as the web.
+double? sortBetween(double? prev, double? next) {
+  if (prev == null && next == null) return sortStep;
+  if (prev == null) return next! - sortStep;
+  if (next == null) return prev + sortStep;
+  final mid = (prev + next) / 2;
+  return next - prev > 1e-6 && mid > prev && mid < next ? mid : null;
+}
+
+/// Column order: sort, then ticket number for rows that share a sort.
+int byTicketOrder(Ticket a, Ticket b) {
+  final c = a.sort.compareTo(b.sort);
+  return c != 0 ? c : a.number.compareTo(b.number);
+}
+
 /// 5 moods (1 = lowest .. 5 = highest), earthy brick -> forest green.
 class MoodPreset {
   const MoodPreset(this.value, this.label, this.hex);
@@ -310,6 +434,7 @@ const defaultIncomeCategories = [
 const dashboardSections = [
   ('kpis', 'Monthly summary', 'Spent · Earned · Saved · Avg mood'),
   ('trend', 'Mood × money trend', 'Net flow vs mood over time'),
+  ('insights', 'AI insights', 'Mood · money · savings, with suggestions'),
   ('spent', 'Spent by category', 'Where the money went'),
   ('earned', 'Earned by category', 'Where the money came from'),
   ('mood', 'Mood distribution', 'How the days felt'),

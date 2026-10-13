@@ -6,11 +6,13 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../data/app_state.dart';
+import '../data/insights.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
 import '../util/range.dart';
+import '../widgets/ai_insights.dart';
 import '../widgets/charts.dart';
 import '../widgets/ui.dart';
 
@@ -54,7 +56,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ('moodTags', 'Mood was about', 'frequency', MoodTagBars(moods: app.moods, window: window)),
       ('categories', 'Category', 'frequency', CategoryBars(transactions: app.transactions, categories: app.categories, window: window)),
     ].where((c) => show(c.$1)).toList();
-    final nothing = hidden != null && !show('kpis') && !show('trend') && charts.isEmpty;
+    final nothing = hidden != null && !show('kpis') && !show('trend') && !show('insights') && charts.isEmpty;
 
     // Phones: the plot takes whatever height is left so heading, tiles and the
     // whole trend card share the first screen (same budget as the web).
@@ -134,6 +136,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 ),
               ),
+            // AI read of mood, money and savings — its own period selector (week / month / year).
+            if (show('insights')) const AiInsightsCard(topics: [InsightTopic.mood, InsightTopic.ledger, InsightTopic.savings]),
             for (final c in charts)
               CardBox(
                 margin: const EdgeInsets.only(bottom: 14),

@@ -25,6 +25,9 @@ class AppState extends ChangeNotifier {
   List<JournalEntry> journal = [];
   List<Activity> activities = [];
   List<ActivityLog> activityLogs = [];
+  List<Board> boards = [];
+  List<BoardColumn> boardColumns = [];
+  List<Ticket> tickets = [];
 
   /// Vault Mode: every income also adds to the savings pool and every expense
   /// draws from it, so savings reflect true net flow. (Per device, like the web.)
@@ -73,6 +76,9 @@ class AppState extends ChangeNotifier {
       _safe(Repo.listJournal, <JournalEntry>[], 'journal'),
       _safe(Repo.listActivities, <Activity>[], 'activities'),
       _safe(Repo.listActivityLogs, <ActivityLog>[], 'activityLogs'),
+      _safe(Repo.listBoards, <Board>[], 'boards'),
+      _safe(Repo.listBoardColumns, <BoardColumn>[], 'boardColumns'),
+      _safe(Repo.listTickets, <Ticket>[], 'tickets'),
     ]);
 
     var cats = results[0] as List<Category>;
@@ -107,6 +113,9 @@ class AppState extends ChangeNotifier {
     journal = results[6] as List<JournalEntry>;
     activities = results[7] as List<Activity>;
     activityLogs = results[8] as List<ActivityLog>;
+    boards = results[9] as List<Board>;
+    boardColumns = results[10] as List<BoardColumn>;
+    tickets = results[11] as List<Ticket>;
     loading = false;
     notifyListeners();
   }
@@ -124,6 +133,9 @@ class AppState extends ChangeNotifier {
     journal = [];
     activities = [];
     activityLogs = [];
+    boards = [];
+    boardColumns = [];
+    tickets = [];
     dashboardHidden = null;
     _dashboardTouched = false;
     notifyListeners();
@@ -307,6 +319,147 @@ class AppState extends ChangeNotifier {
       final x = await Repo.addActivityLog(activityId, dateKey);
       activityLogs = [...activityLogs, x];
     }
+    notifyListeners();
+  }
+
+  // ---- boards (to-do + to-buy): a new board starts with its kind's default columns
+  List<BoardColumn> columnsOf(String boardId) =>
+      boardColumns.where((c) => c.boardId == boardId).toList()..sort((a, b) => a.sort.compareTo(b.sort));
+
+  List<Ticket> ticketsIn(String columnId) => tickets.where((t) => t.columnId == columnId).toList()..sort(byTicketOrder);
+
+  Future<Board> createBoard(String name, BoardKind kind) async {
+    final board = await Repo.addBoard(name: name, kind: kind, sort: boards.length);
+    boards = [...boards, board];
+    notifyListeners();
+    try {
+      final cols = await Repo.addBoardColumns(board.id, [for (final (i, n) in defaultBoardColumns[kind]!.indexed) (n, i)]);
+      boardColumns = [...boardColumns, ...cols];
+      notifyListeners();
+    } catch (e) {
+      // The board still works — its columns can be added by hand.
+      debugPrint('[catalyst] could not add the new board\'s columns: $e');
+    }
+    return board;
+  }
+
+  Future<void> renameBoard(String id, String name) async {
+    await Repo.renameBoard(id, name);
+    boards = [for (final b in boards) b.id == id ? b.copyWith(name: name) : b];
+    notifyListeners();
+  }
+
+  Future<void> removeBoard(String id) async {
+    await Repo.deleteBoard(id);
+    boards = boards.where((b) => b.id != id).toList();
+    boardColumns = boardColumns.where((c) => c.boardId != id).toList();
+    tickets = tickets.where((t) => t.boardId != id).toList();
+    notifyListeners();
+  }
+
+  Future<void> createColumn(String boardId, String name) async {
+    final last = columnsOf(boardId).fold<int>(-1, (m, c) => c.sort > m ? c.sort : m);
+    final cols = await Repo.addBoardColumns(boardId, [(name, last + 1)]);
+    boardColumns = [...boardColumns, ...cols];
+    notifyListeners();
+  }
+
+  Future<void> renameColumn(String id, String name) async {
+    await Repo.updateBoardColumn(id, name: name);
+    boardColumns = [for (final c in boardColumns) c.id == id ? c.copyWith(name: name) : c];
+    notifyListeners();
+  }
+
+  Future<void> moveColumn(String id, int dir) async {
+    final col = boardColumns.where((c) => c.id == id).firstOrNull;
+    if (col == null) return;
+    final cols = columnsOf(col.boardId);
+    final i = cols.indexWhere((c) => c.id == id);
+    final j = i + dir;
+    if (j < 0 || j >= cols.length) return;
+    final swapped = [...cols]
+      ..[i] = cols[j]
+      ..[j] = cols[i];
+    // Renumber the whole board so equal or gapped sorts can't block the swap.
+    final changes = {for (final (k, c) in swapped.indexed) if (c.sort != k) c.id: k};
+    await Future.wait([for (final e in changes.entries) Repo.updateBoardColumn(e.key, sort: e.value)]);
+    boardColumns = [for (final c in boardColumns) changes.containsKey(c.id) ? c.copyWith(sort: changes[c.id]) : c];
+    notifyListeners();
+  }
+
+  Future<void> removeColumn(String id) async {
+    await Repo.deleteBoardColumn(id);
+    boardColumns = boardColumns.where((c) => c.id != id).toList();
+    tickets = tickets.where((t) => t.columnId != id).toList();
+    notifyListeners();
+  }
+
+  Future<Ticket> createTicket(String columnId, String title) async {
+    final col = boardColumns.where((c) => c.id == columnId).firstOrNull;
+    if (col == null) throw Exception('That column no longer exists.');
+    final inBoard = tickets.where((t) => t.boardId == col.boardId);
+    final lastSort = inBoard.where((t) => t.columnId == columnId).fold<double>(0, (m, t) => t.sort > m ? t.sort : m);
+    final t = await Repo.addTicket({
+      'board_id': col.boardId,
+      'column_id': columnId,
+      'number': inBoard.fold<int>(0, (m, x) => x.number > m ? x.number : m) + 1,
+      'title': title,
+      'sort': lastSort + sortStep, // new tickets join the bottom of the column
+    });
+    tickets = [...tickets, t];
+    notifyListeners();
+    return t;
+  }
+
+  /// Saves a ticket's editable fields (title, notes, priority, due date, price).
+  Future<void> saveTicket(Ticket t) async {
+    await Repo.updateTicket(t.id, {
+      'title': t.title,
+      'description': t.description,
+      'priority': t.priority.name,
+      'due_on': t.dueOn,
+      'amount': t.amount,
+    });
+    tickets = [
+      for (final x in tickets)
+        x.id == t.id
+            ? x.edited(title: t.title, description: t.description, priority: t.priority, dueOn: t.dueOn, amount: t.amount)
+            : x,
+    ];
+    notifyListeners();
+  }
+
+  /// Puts a ticket in [columnId] where it sits in [order] (that column's ids, top to bottom).
+  Future<void> placeTicket(String id, String columnId, List<String> order) async {
+    final i = order.indexOf(id);
+    if (i < 0) return;
+    final sortOf = {for (final t in tickets) t.id: t.sort};
+    final between = sortBetween(i > 0 ? sortOf[order[i - 1]] : null, i < order.length - 1 ? sortOf[order[i + 1]] : null);
+    // Usually one row changes; when neighbours are too close, renumber the column.
+    final moves = between == null ? {for (final (k, tid) in order.indexed) tid: (k + 1) * sortStep} : {id: between};
+    // Optimistic: the card stays where it was dropped while the write goes out.
+    tickets = [
+      for (final t in tickets)
+        moves.containsKey(t.id) ? t.moved(t.id == id ? columnId : t.columnId, moves[t.id]!) : t,
+    ];
+    notifyListeners();
+    try {
+      await Future.wait([
+        for (final e in moves.entries)
+          Repo.updateTicket(e.key, {'sort': e.value, if (e.key == id) 'column_id': columnId}),
+      ]);
+    } catch (e) {
+      debugPrint('[catalyst] could not move the ticket: $e');
+      // Put the board back the way the database has it.
+      tickets = await _safe(Repo.listTickets, tickets, 'tickets');
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> removeTicket(String id) async {
+    await Repo.deleteTicket(id);
+    tickets = tickets.where((t) => t.id != id).toList();
     notifyListeners();
   }
 }

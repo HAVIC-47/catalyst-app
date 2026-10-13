@@ -1,6 +1,7 @@
 // App shell — the web's layout on a phone: "TODAY" top bar, the page, and the
-// 5-button bottom nav (Calendar · Dashboard · Ledger · Journal · More). The More
-// sheet holds every section, New entry, Vault Mode, theme and sign out.
+// bottom nav (Calendar · Dashboard · + · Ledger · More). The center + scans a
+// memo; the More sheet holds the other sections (Journal, To-do, To buy, …),
+// New entry, Vault Mode, theme and sign out.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -8,12 +9,14 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/app_state.dart';
+import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../theme/theme_controller.dart';
 import '../util/format.dart';
 import '../widgets/ui.dart';
 import 'bills_screen.dart';
+import 'boards_screen.dart';
 import 'budgets_screen.dart';
 import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
@@ -24,23 +27,21 @@ import 'ledger_screen.dart';
 import 'memo_sheet.dart';
 import 'settings_screen.dart';
 
-enum Section { calendar, dashboard, ledger, journal, budgets, goals, bills, settings }
+enum Section { calendar, dashboard, ledger, journal, todo, shopping, budgets, goals, bills, settings }
 
-const _tabs = [
-  (Section.calendar, 'Calendar', LucideIcons.calendarDays),
-  (Section.dashboard, 'Dashboard', LucideIcons.layoutGrid),
-  (Section.ledger, 'Ledger', LucideIcons.receipt),
+const _calendarTab = (Section.calendar, 'Calendar', LucideIcons.calendarDays);
+const _dashboardTab = (Section.dashboard, 'Dashboard', LucideIcons.layoutGrid);
+const _ledgerTab = (Section.ledger, 'Ledger', LucideIcons.receipt);
+const _tabs = [_calendarTab, _dashboardTab, _ledgerTab];
+
+/// Sections that aren't in the bottom bar.
+const _moreSections = [
   (Section.journal, 'Journal', LucideIcons.notebookPen),
-];
-
-const _allSections = [
-  (Section.calendar, 'Calendar', LucideIcons.calendarDays),
-  (Section.dashboard, 'Dashboard', LucideIcons.layoutGrid),
-  (Section.ledger, 'Transactions', LucideIcons.receipt),
+  (Section.todo, 'To-do', LucideIcons.listTodo),
+  (Section.shopping, 'To buy', LucideIcons.shoppingCart),
   (Section.budgets, 'Budgets', LucideIcons.piggyBank),
   (Section.goals, 'Goals', LucideIcons.target),
   (Section.bills, 'Bills', LucideIcons.bell),
-  (Section.journal, 'Journal', LucideIcons.notebookPen),
   (Section.settings, 'Settings', LucideIcons.settings),
 ];
 
@@ -83,6 +84,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       Section.dashboard: DashboardScreen(onCustomize: () => go(Section.settings)),
       Section.ledger: const LedgerScreen(),
       Section.journal: const JournalScreen(),
+      Section.todo: const BoardsScreen(kind: BoardKind.todo),
+      Section.shopping: const BoardsScreen(kind: BoardKind.shopping),
       Section.budgets: const BudgetsScreen(),
       Section.goals: const GoalsScreen(),
       Section.bills: const BillsScreen(),
@@ -110,7 +113,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               ],
             ),
           ),
-          bottomNavigationBar: _BottomNav(current: _section, onSelect: go, onMore: () => _openMore(context)),
+          bottomNavigationBar: _BottomNav(
+            current: _section,
+            onSelect: go,
+            onScan: () => openMemoScanner(context),
+            onMore: () => _openMore(context),
+          ),
         ),
       ),
     );
@@ -154,18 +162,6 @@ class _TopBar extends StatelessWidget {
           const Label('Today'),
           const SizedBox(width: 8),
           Text(fmt(DateTime.now(), 'EEE, MMM d, yyyy'), style: monoStyle(p, 14, color: p.muted(0.7))),
-          const Spacer(),
-          // Scan a memo: photo -> one expense per item.
-          SizedBox(
-            width: 34,
-            child: PrimaryButton(
-              label: '',
-              icon: LucideIcons.plus,
-              height: 34,
-              semanticLabel: 'Scan a memo',
-              onPressed: () => openMemoScanner(context),
-            ),
-          ),
         ],
       ),
     );
@@ -173,10 +169,11 @@ class _TopBar extends StatelessWidget {
 }
 
 class _BottomNav extends StatelessWidget {
-  const _BottomNav({required this.current, required this.onSelect, required this.onMore});
+  const _BottomNav({required this.current, required this.onSelect, required this.onScan, required this.onMore});
 
   final Section current;
   final ValueChanged<Section> onSelect;
+  final VoidCallback onScan;
   final VoidCallback onMore;
 
   @override
@@ -225,7 +222,43 @@ class _BottomNav extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
             children: [
-              for (final t in _tabs) item(t.$2, t.$3, current == t.$1, () => onSelect(t.$1)),
+              for (final t in [_calendarTab, _dashboardTab]) item(t.$2, t.$3, current == t.$1, () => onSelect(t.$1)),
+              // Scan a memo (photo -> one expense per item) — the center action.
+              // Same fixed height as the tabs, so the bar never grows.
+              Expanded(
+                child: SizedBox(
+                  height: 60,
+                  child: Center(
+                    child: Tooltip(
+                      message: 'Scan a memo',
+                      child: Semantics(
+                        button: true,
+                        label: 'Scan a memo',
+                        child: Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(color: p.accentA(p.dark ? 0.45 : 0.5), blurRadius: p.dark ? 26 : 16, offset: Offset(0, p.dark ? 8 : 6), spreadRadius: -8),
+                            ],
+                          ),
+                          child: Material(
+                            color: p.accent,
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: onScan,
+                              child: Icon(LucideIcons.plus, size: 24, color: p.onAccent),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              item(_ledgerTab.$2, _ledgerTab.$3, current == _ledgerTab.$1, () => onSelect(_ledgerTab.$1)),
               item('More', LucideIcons.ellipsis, moreActive, onMore),
             ],
           ),
@@ -257,123 +290,126 @@ class _MoreSheet extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
       child: SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(width: 40, height: 4, decoration: BoxDecoration(color: p.inkA(0.2), borderRadius: BorderRadius.circular(4))),
-            ),
-            const SizedBox(height: 10),
-            Row(children: [
-              const Expanded(child: Label('All sections')),
-              IconButton(tooltip: 'Close', onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.45))),
-            ]),
-            const SizedBox(height: 4),
-            GridView.count(
-              crossAxisCount: 4,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 0.95,
-              children: [
-                for (final s in _allSections)
-                  Semantics(
-                    button: true,
-                    selected: current == s.$1,
-                    label: s.$2,
-                    child: Material(
-                      color: current == s.$1 ? p.accentA(0.08) : Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: current == s.$1 ? p.accentA(0.4) : p.line),
-                      ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => onSelect(s.$1),
-                        child: ExcludeSemantics(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(s.$3, size: 20, color: current == s.$1 ? p.accent : p.muted(0.6)),
-                              const SizedBox(height: 6),
-                              Text(s.$2,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: bodyStyle(p, 11, weight: FontWeight.w500, color: current == s.$1 ? p.accent : p.muted(0.6))),
-                            ],
+        // Scrolls on short phones instead of overflowing.
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(width: 40, height: 4, decoration: BoxDecoration(color: p.inkA(0.2), borderRadius: BorderRadius.circular(4))),
+              ),
+              const SizedBox(height: 10),
+              Row(children: [
+                const Expanded(child: Label('More')),
+                IconButton(tooltip: 'Close', onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.45))),
+              ]),
+              const SizedBox(height: 4),
+              GridView.count(
+                crossAxisCount: 4,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 0.95,
+                children: [
+                  for (final s in _moreSections)
+                    Semantics(
+                      button: true,
+                      selected: current == s.$1,
+                      label: s.$2,
+                      child: Material(
+                        color: current == s.$1 ? p.accentA(0.08) : Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: current == s.$1 ? p.accentA(0.4) : p.line),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => onSelect(s.$1),
+                          child: ExcludeSemantics(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(s.$3, size: 20, color: current == s.$1 ? p.accent : p.muted(0.6)),
+                                const SizedBox(height: 6),
+                                Text(s.$2,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: bodyStyle(p, 11, weight: FontWeight.w500, color: current == s.$1 ? p.accent : p.muted(0.6))),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Divider(color: p.line, height: 1),
-            const SizedBox(height: 14),
-            PrimaryButton(
-              expand: true,
-              height: 48,
-              icon: LucideIcons.plus,
-              label: 'New entry',
-              onPressed: onNewEntry,
-            ),
-            const SizedBox(height: 10),
-            _Row(
-              label: 'Vault Mode',
-              info: 'Treat every transaction as part of your savings vault: income is added to savings and '
-                  'expenses are drawn from it, so the savings chart tracks your true net flow.',
-              trailing: GestureDetector(
-                onTap: () => app.setVaultMode(!app.vaultMode),
-                child: Semantics(
-                  toggled: app.vaultMode,
-                  label: 'Vault Mode',
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: app.vaultMode ? p.accentA(0.5) : p.line),
-                      color: app.vaultMode ? p.accentA(0.1) : Colors.transparent,
+                ],
+              ),
+              const SizedBox(height: 14),
+              Divider(color: p.line, height: 1),
+              const SizedBox(height: 14),
+              PrimaryButton(
+                expand: true,
+                height: 48,
+                icon: LucideIcons.plus,
+                label: 'New entry',
+                onPressed: onNewEntry,
+              ),
+              const SizedBox(height: 10),
+              _Row(
+                label: 'Vault Mode',
+                info: 'Treat every transaction as part of your savings vault: income is added to savings and '
+                    'expenses are drawn from it, so the savings chart tracks your true net flow.',
+                trailing: GestureDetector(
+                  onTap: () => app.setVaultMode(!app.vaultMode),
+                  child: Semantics(
+                    toggled: app.vaultMode,
+                    label: 'Vault Mode',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(color: app.vaultMode ? p.accentA(0.5) : p.line),
+                        color: app.vaultMode ? p.accentA(0.1) : Colors.transparent,
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(LucideIcons.vault, size: 14, color: app.vaultMode ? p.accent : p.muted(0.5)),
+                        const SizedBox(width: 6),
+                        Text('Vault', style: bodyStyle(p, 12, weight: FontWeight.w500, color: app.vaultMode ? p.accent : p.muted(0.5))),
+                        const SizedBox(width: 8),
+                        PillSwitch(on: app.vaultMode, width: 26, height: 15),
+                      ]),
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(LucideIcons.vault, size: 14, color: app.vaultMode ? p.accent : p.muted(0.5)),
-                      const SizedBox(width: 6),
-                      Text('Vault', style: bodyStyle(p, 12, weight: FontWeight.w500, color: app.vaultMode ? p.accent : p.muted(0.5))),
-                      const SizedBox(width: 8),
-                      PillSwitch(on: app.vaultMode, width: 26, height: 15),
-                    ]),
                   ),
                 ),
               ),
-            ),
-            _Row(
-              label: 'Theme',
-              trailing: HairlineIconButton(
-                icon: theme.dark ? LucideIcons.sun : LucideIcons.moon,
-                tooltip: theme.dark ? 'Switch to light mode' : 'Switch to dark mode',
-                onPressed: theme.toggle,
+              _Row(
+                label: 'Theme',
+                trailing: HairlineIconButton(
+                  icon: theme.dark ? LucideIcons.sun : LucideIcons.moon,
+                  tooltip: theme.dark ? 'Switch to light mode' : 'Switch to dark mode',
+                  onPressed: theme.toggle,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            HairlineButton(
-              height: 50,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              onPressed: () async {
-                Navigator.pop(context);
-                await Supabase.instance.client.auth.signOut();
-              },
-              child: Row(children: [
-                Icon(LucideIcons.logOut, size: 16, color: p.muted(0.8)),
-                const SizedBox(width: 12),
-                Text('Sign out', style: bodyStyle(p, 14, color: p.muted(0.8))),
-                const Spacer(),
-                if (email != null)
-                  Flexible(child: Text(email, maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 12, color: p.muted(0.4)))),
-              ]),
-            ),
-          ],
+              const SizedBox(height: 8),
+              HairlineButton(
+                height: 50,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await Supabase.instance.client.auth.signOut();
+                },
+                child: Row(children: [
+                  Icon(LucideIcons.logOut, size: 16, color: p.muted(0.8)),
+                  const SizedBox(width: 12),
+                  Text('Sign out', style: bodyStyle(p, 14, color: p.muted(0.8))),
+                  const Spacer(),
+                  if (email != null)
+                    Flexible(child: Text(email, maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 12, color: p.muted(0.4)))),
+                ]),
+              ),
+            ],
+          ),
         ),
       ),
     );

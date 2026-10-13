@@ -4,10 +4,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../data/app_state.dart';
+import '../data/insights.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
 import '../util/limits.dart';
+import '../widgets/ai_insights.dart';
 import '../widgets/ui.dart';
 
 const _recurrences = ['monthly', 'weekly', 'yearly', 'once'];
@@ -76,6 +78,7 @@ class _BillsScreenState extends State<BillsScreen> {
             accent: 'dues.',
             below: outstanding > 0 ? Text('${formatCurrency(outstanding)} outstanding', style: monoStyle(p, 13, color: p.muted(0.45))) : null,
           ),
+          const AiInsightsCard(topics: [InsightTopic.bills]),
           CardBox(
             margin: const EdgeInsets.only(bottom: 16),
             child: Column(
