@@ -9,6 +9,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/limits.dart';
 import '../widgets/mood_face.dart';
 import '../widgets/ui.dart';
 
@@ -368,6 +369,7 @@ class _MoneyFormState extends State<_MoneyForm> {
           label: 'Place',
           child: TextField(
             controller: f.place,
+            inputFormatters: maxChars(Limits.place),
             decoration: InputDecoration(
               hintText: 'Star Kabab, Aarong, Pathao…',
               prefixIcon: Icon(LucideIcons.mapPin, size: 16, color: p.muted(0.35)),
@@ -375,7 +377,7 @@ class _MoneyFormState extends State<_MoneyForm> {
           ),
         ),
         const SizedBox(height: 22),
-        FieldBlock(label: 'Note · optional', child: TextField(controller: f.note, decoration: const InputDecoration(hintText: 'What was it for?'))),
+        FieldBlock(label: 'Note · optional', child: TextField(controller: f.note, inputFormatters: maxChars(Limits.note), decoration: const InputDecoration(hintText: 'What was it for?'))),
         if (_error != null) ...[const SizedBox(height: 16), _ErrorText(_error!)],
         const SizedBox(height: 22),
         PrimaryButton(
@@ -558,7 +560,7 @@ class _MoodFormState extends State<_MoodForm> {
         const SizedBox(height: 22),
         FieldBlock(
           label: 'Note · optional',
-          child: TextField(controller: _note, minLines: 3, maxLines: 5, decoration: const InputDecoration(hintText: 'What shaped the mood right now?')),
+          child: TextField(controller: _note, minLines: 3, maxLines: 5, inputFormatters: maxChars(Limits.note), decoration: const InputDecoration(hintText: 'What shaped the mood right now?')),
         ),
         if (dayMoods.isNotEmpty) ...[
           const SizedBox(height: 22),
@@ -729,7 +731,7 @@ class _SavingFormState extends State<_SavingForm> {
         const SizedBox(height: 22),
         _TimeField(value: _time, onChanged: (v) => setState(() => _time = v)),
         const SizedBox(height: 22),
-        FieldBlock(label: 'Note · optional', child: TextField(controller: _note, decoration: const InputDecoration(hintText: 'What is this saving for?'))),
+        FieldBlock(label: 'Note · optional', child: TextField(controller: _note, inputFormatters: maxChars(Limits.note), decoration: const InputDecoration(hintText: 'What is this saving for?'))),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),

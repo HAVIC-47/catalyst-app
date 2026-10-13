@@ -7,6 +7,7 @@ import '../data/app_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/limits.dart';
 import '../widgets/ui.dart';
 
 const _recurrences = ['monthly', 'weekly', 'yearly', 'once'];
@@ -80,7 +81,7 @@ class _BillsScreenState extends State<BillsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(controller: _name, decoration: const InputDecoration(hintText: 'Bill (e.g. Internet)')),
+                TextField(controller: _name, inputFormatters: maxChars(Limits.name), decoration: const InputDecoration(hintText: 'Bill (e.g. Internet)')),
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(child: AmountField(controller: _amount, hint: 'Amount')),

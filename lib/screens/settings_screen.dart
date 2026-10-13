@@ -8,6 +8,7 @@ import '../data/app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
+import '../util/limits.dart';
 import '../widgets/ui.dart';
 
 const _swatches = [
@@ -215,6 +216,7 @@ class _CategorySectionState extends State<_CategorySection> {
                   Expanded(
                     child: TextField(
                       controller: _name,
+                      inputFormatters: maxChars(Limits.name),
                       onSubmitted: (_) => add(),
                       decoration: InputDecoration(hintText: 'New ${widget.kind.name} category'),
                     ),
@@ -307,6 +309,7 @@ class _CategoryRowState extends State<_CategoryRow> {
               child: TextField(
                 controller: _ctrl,
                 focusNode: _focus,
+                inputFormatters: maxChars(Limits.name),
                 onSubmitted: (_) => _rename(),
                 style: bodyStyle(p, 14, color: p.muted(0.85)),
                 decoration: const InputDecoration(

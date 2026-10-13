@@ -9,6 +9,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/limits.dart';
 import '../widgets/mood_face.dart';
 import '../widgets/ui.dart';
 
@@ -92,10 +93,11 @@ class _JournalScreenState extends State<JournalScreen> {
               children: [
                 const Label('New entry · today'),
                 const SizedBox(height: 10),
-                TextField(controller: _title, decoration: const InputDecoration(hintText: 'Title')),
+                TextField(controller: _title, inputFormatters: maxChars(Limits.title), decoration: const InputDecoration(hintText: 'Title')),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _body,
+                  inputFormatters: maxChars(Limits.body),
                   minLines: 4,
                   maxLines: 8,
                   decoration: const InputDecoration(hintText: 'How did the day go? What happened?'),
@@ -237,6 +239,7 @@ class _JournalScreenState extends State<JournalScreen> {
                   Expanded(
                     child: TextField(
                       controller: _act,
+                      inputFormatters: maxChars(Limits.name),
                       onSubmitted: (_) => addActivity(),
                       decoration: const InputDecoration(hintText: 'e.g. Workout, Read, Sleep 8h'),
                     ),

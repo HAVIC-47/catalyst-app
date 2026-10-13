@@ -9,6 +9,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/limits.dart';
 import '../widgets/ui.dart';
 
 class GoalsScreen extends StatefulWidget {
@@ -71,7 +72,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(controller: _title, decoration: const InputDecoration(hintText: 'Goal (e.g. New laptop)')),
+                TextField(controller: _title, inputFormatters: maxChars(Limits.title), decoration: const InputDecoration(hintText: 'Goal (e.g. New laptop)')),
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(child: AmountField(controller: _target, hint: 'Target')),

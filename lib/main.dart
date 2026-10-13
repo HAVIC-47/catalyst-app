@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config.dart';
 import 'data/app_state.dart';
+import 'data/secure_session_storage.dart';
 import 'screens/auth_screen.dart';
 import 'screens/shell.dart';
 import 'theme/app_theme.dart';
@@ -19,7 +20,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _registerFontLicenses();
   if (isConfigured) {
-    await Supabase.initialize(url: supabaseUrl, publishableKey: supabaseAnonKey);
+    await Supabase.initialize(
+      url: supabaseUrl,
+      publishableKey: supabaseAnonKey,
+      authOptions: FlutterAuthClientOptions(localStorage: SecureSessionStorage(supabaseUrl)),
+    );
   }
   final theme = await ThemeController.load();
   if (testSemantics) SemanticsBinding.instance.ensureSemantics();

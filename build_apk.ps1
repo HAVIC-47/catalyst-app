@@ -25,11 +25,11 @@ if ($LASTEXITCODE -ne 0) { Write-Host "flutter pub get failed." -ForegroundColor
 
 Write-Host "Building release APK (first build downloads Gradle deps and takes a few minutes)..." -ForegroundColor Cyan
 if ($Small) {
-  & $flutter build apk --release --split-per-abi --dart-define-from-file=env.json
+  & $flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build\symbols --dart-define-from-file=env.json
   $apk = "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk"
   $name = "Catalyst-arm64.apk"
 } else {
-  & $flutter build apk --release --dart-define-from-file=env.json
+  & $flutter build apk --release --obfuscate --split-debug-info=build\symbols --dart-define-from-file=env.json
   $apk = "build\app\outputs\flutter-apk\app-release.apk"
   $name = "Catalyst.apk"
 }

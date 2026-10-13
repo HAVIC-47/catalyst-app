@@ -35,8 +35,10 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _submit() async {
     final email = _email.text.trim();
     final password = _password.text;
-    if (email.isEmpty || password.length < 6) {
-      setState(() => _error = 'Enter your email and a password of at least 6 characters.');
+    if (email.isEmpty || password.isEmpty || (_signup && password.length < 8)) {
+      setState(() => _error = _signup
+          ? 'Enter your email and a password of at least 8 characters.'
+          : 'Enter your email and password.');
       return;
     }
     setState(() {
@@ -144,7 +146,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     autofillHints: [_signup ? AutofillHints.newPassword : AutofillHints.password],
                     onSubmitted: (_) => _submit(),
                     decoration: InputDecoration(
-                      hintText: _signup ? 'Create a password (min 6)' : 'Password',
+                      hintText: _signup ? 'Create a password (min 8)' : 'Password',
                       prefixIcon: Icon(LucideIcons.lock, size: 16, color: p.muted(0.35)),
                     ),
                   ),

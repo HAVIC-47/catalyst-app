@@ -4,11 +4,11 @@
 
 **Money meets _mood_.** Track every taka against how the day actually felt.
 
-[![Download APK](https://img.shields.io/badge/Download-Catalyst.apk-B2462C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst.apk)
+[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.0.1%20APK-B2462C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.0.1/Catalyst.apk)
 &nbsp;
 [![Latest release](https://img.shields.io/github/v/release/HAVIC-47/catalyst-app?style=for-the-badge&color=181512&label=version)](https://github.com/HAVIC-47/catalyst-app/releases/latest)
 
-**Direct download:** https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst.apk
+**Direct download (v1.0.1):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.0.1/Catalyst.apk
 
 Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https://catalyst-hishab.vercel.app)
 
@@ -27,17 +27,21 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
 
 ## Install
 
-1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst.apk)**
+1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.0.1/Catalyst.apk)**
    (or download it on a computer and send it over USB, Drive, Telegram…).
 2. Open the downloaded `Catalyst.apk`. Android asks once to allow installs from your browser or
    file manager — allow it, then tap **Install**.
 3. Log in with your Catalyst account, or create one.
 
-The download is a universal APK (~55 MB) that runs on any Android phone. A smaller build for
-modern 64-bit phones, `Catalyst-arm64.apk` (~20 MB), is attached to every
-[release](https://github.com/HAVIC-47/catalyst-app/releases/latest).
+The download is a universal APK (~54 MB) that runs on any Android phone. A smaller build for
+modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.0.1/Catalyst-arm64.apk) (~20 MB), is attached to every
+[release](https://github.com/HAVIC-47/catalyst-app/releases).
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
+
+**1.0.1 is a security update** — your login is now kept in encrypted storage (Android Keystore),
+app data is left out of cloud backups, and the app only connects over HTTPS. Install it over 1.0.0;
+you stay logged in. [Release notes](https://github.com/HAVIC-47/catalyst-app/releases/tag/v1.0.1)
 
 ## One account, two apps
 
@@ -78,7 +82,8 @@ copy env.example.json env.json     # then fill in your Supabase URL + anon key
 ```
 
 `build_apk.ps1` options: `-Small` builds the 64-bit-only APK, `-Install` installs it on a phone
-connected over USB (with USB debugging on).
+connected over USB (with USB debugging on). Release builds are obfuscated; keep `build\symbols` if
+you want to read crash stack traces later.
 
 To run on a connected phone or emulator while developing:
 
@@ -96,7 +101,8 @@ app's `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`:
 ```
 
 The anon key is public by design; every table is protected by row-level security, so each account
-only ever sees its own rows. The database schema lives in the web repo (`db/supabase.sql`).
+only ever sees its own rows. The database schema and its hardening live in the web repo
+(`db/supabase.sql`, `db/security.sql`).
 
 ### Signing
 
@@ -113,6 +119,8 @@ lib/
   models.dart          domain types — mirror the web's src/types
   data/repo.dart       Supabase queries — mirror the web's src/lib/db
   data/app_state.dart  central store — mirrors the web's useAppData
+  data/secure_session_storage.dart  login session in Keystore-encrypted storage
+  util/limits.dart     text length limits (same as the database checks)
   theme/               design tokens (same values as the web's globals.css)
   widgets/             cards, buttons, segmented controls, charts, mood faces
   screens/             one screen per web page, plus the entry sheet and app shell
