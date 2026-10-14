@@ -29,6 +29,11 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
   <img src="docs/screenshots/mood-entry.png" width="200" alt="Logging a mood with context tags" />
   <img src="docs/screenshots/calendar-light.png" width="200" alt="Calendar in light mode" />
 </p>
+<p align="center">
+  <img src="docs/screenshots/notes-scan.png" width="200" alt="Notes screenshot read into expense and income entries" />
+  <img src="docs/screenshots/list-scan.png" width="200" alt="A to-do list screenshot added straight onto the board" />
+  <img src="docs/screenshots/ledger-edit.png" width="200" alt="Editing a transaction from the ledger" />
+</p>
 
 ## Install
 
