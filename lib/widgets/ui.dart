@@ -570,11 +570,12 @@ class TrashButton extends StatelessWidget {
 
 /// Bordered button that opens the date picker.
 class DateButton extends StatelessWidget {
-  const DateButton({super.key, required this.value, required this.hint, required this.onPicked});
+  const DateButton({super.key, required this.value, required this.hint, required this.onPicked, this.lastDate});
 
   final DateTime? value;
   final String hint;
   final ValueChanged<DateTime?> onPicked;
+  final DateTime? lastDate; // latest pickable day (e.g. today for things that already happened)
 
   @override
   Widget build(BuildContext context) {
@@ -583,11 +584,13 @@ class DateButton extends StatelessWidget {
       height: 44,
       fill: p.inkA(0.02),
       onPressed: () async {
+        final last = lastDate ?? DateTime(2100);
+        final initial = value ?? DateTime.now();
         final d = await showDatePicker(
           context: context,
-          initialDate: value ?? DateTime.now(),
+          initialDate: initial.isAfter(last) ? last : initial,
           firstDate: DateTime(2000),
-          lastDate: DateTime(2100),
+          lastDate: last,
         );
         onPicked(d ?? value);
       },

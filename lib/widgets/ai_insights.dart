@@ -28,6 +28,8 @@ const _pitch = {
   InsightTopic.bills: "What's due, what's overdue, and how to keep your bills under control.",
   InsightTopic.journal: 'What your entries were about, how the days felt, and small things that might help.',
   InsightTopic.mood: 'How your mood moved, what lifted or lowered it, and gentle ways to feel better.',
+  InsightTopic.todo: "What's done, what's overdue or due soon, and what to tackle first.",
+  InsightTopic.shopping: "What's still to buy, what it'll cost, and ways to shop smarter.",
 };
 
 const _suggestionsLabel = {
@@ -37,6 +39,8 @@ const _suggestionsLabel = {
   InsightTopic.bills: 'To stay on top of bills',
   InsightTopic.journal: 'Small things to try',
   InsightTopic.mood: 'To feel better',
+  InsightTopic.todo: 'To get through it',
+  InsightTopic.shopping: 'To shop smarter',
 };
 
 String _ago(DateTime t) {
@@ -50,9 +54,13 @@ String _ago(DateTime t) {
 }
 
 class AiInsightsCard extends StatefulWidget {
-  const AiInsightsCard({super.key, required this.topics});
+  const AiInsightsCard({super.key, required this.topics, this.initiallyOpen = true});
 
   final List<InsightTopic> topics;
+
+  /// Folded or not on a first visit; after that the card remembers the user's choice.
+  /// The boards start it folded, so the board stays near the top.
+  final bool initiallyOpen;
 
   /// Where summaries come from — tests swap in an answer that needs no server.
   @visibleForTesting
@@ -67,7 +75,7 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
   late InsightTopic _topic = widget.topics.first;
   Range _period = Range.week;
   int _offset = 0;
-  bool _open = true;
+  late bool _open = widget.initiallyOpen;
 
   String _key = ''; // what _data / _loadError belong to
   InsightResult? _data;
@@ -87,7 +95,8 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
   void initState() {
     super.initState();
     SharedPreferences.getInstance().then((p) {
-      if (mounted && p.getBool(_prefsKey) == false) setState(() => _open = false);
+      final saved = p.getBool(_prefsKey);
+      if (mounted && saved != null && saved != _open) setState(() => _open = saved);
     });
   }
 
@@ -106,6 +115,8 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
         InsightTopic.bills => [a.bills, a.transactions],
         InsightTopic.journal => [a.journal, a.activities, a.activityLogs],
         InsightTopic.mood => [a.moods, a.transactions, a.journal, a.activityLogs],
+        InsightTopic.todo => [a.boards, a.boardColumns, a.tickets],
+        InsightTopic.shopping => [a.boards, a.boardColumns, a.tickets, a.transactions],
       };
 
   Future<void> _fetch({bool quiet = false}) async {

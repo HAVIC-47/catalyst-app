@@ -401,6 +401,13 @@ class _DayGroup extends StatelessWidget {
                     formatCurrency(t.kind == Kind.income ? t.amount : -t.amount, sign: true),
                     style: monoStyle(p, 14, color: t.kind == Kind.income ? p.income : p.muted(0.8)),
                   ),
+                  const SizedBox(width: 2),
+                  IconButton(
+                    tooltip: 'Edit',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => openTxnEditor(context, t),
+                    icon: Icon(LucideIcons.pencil, size: 16, color: p.muted(0.45)),
+                  ),
                   TrashButton(onPressed: () async {
                     if (!await confirm(context, 'Delete this transaction?')) return;
                     try {

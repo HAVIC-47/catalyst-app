@@ -1,6 +1,7 @@
 // App shell — the web's layout on a phone: "TODAY" top bar, the page, and the
 // bottom nav (Calendar · Dashboard · + · Ledger · More). The center + scans a
-// memo; the More sheet holds the other sections (Journal, To-do, To buy, …),
+// memo or a screenshot of notes — or, on To-do and To buy, a screenshot of a
+// list. The More sheet holds the other sections (Journal, To-do, To buy, …),
 // New entry, Vault Mode, theme and sign out.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config.dart';
 import '../data/app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
@@ -24,6 +26,7 @@ import 'entry_sheet.dart';
 import 'goals_screen.dart';
 import 'journal_screen.dart';
 import 'ledger_screen.dart';
+import 'list_scan_sheet.dart';
 import 'memo_sheet.dart';
 import 'settings_screen.dart';
 
@@ -76,6 +79,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   void go(Section s) => setState(() => _section = s);
 
+  /// The + adds from a photo: a list onto the board on screen, else a memo or notes.
+  BoardKind? get _board => switch (_section) {
+        Section.todo => BoardKind.todo,
+        Section.shopping => BoardKind.shopping,
+        _ => null,
+      };
+
+  void _scan(BuildContext context) {
+    final kind = _board;
+    kind == null ? openMemoScanner(context) : openListScanner(context, kind);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -116,7 +131,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           bottomNavigationBar: _BottomNav(
             current: _section,
             onSelect: go,
-            onScan: () => openMemoScanner(context),
+            scanLabel: _board == null ? 'Scan a memo or notes' : 'Add from a screenshot of your list',
+            onScan: () => _scan(context),
             onMore: () => _openMore(context),
           ),
         ),
@@ -169,10 +185,11 @@ class _TopBar extends StatelessWidget {
 }
 
 class _BottomNav extends StatelessWidget {
-  const _BottomNav({required this.current, required this.onSelect, required this.onScan, required this.onMore});
+  const _BottomNav({required this.current, required this.onSelect, required this.scanLabel, required this.onScan, required this.onMore});
 
   final Section current;
   final ValueChanged<Section> onSelect;
+  final String scanLabel;
   final VoidCallback onScan;
   final VoidCallback onMore;
 
@@ -223,17 +240,17 @@ class _BottomNav extends StatelessWidget {
           child: Row(
             children: [
               for (final t in [_calendarTab, _dashboardTab]) item(t.$2, t.$3, current == t.$1, () => onSelect(t.$1)),
-              // Scan a memo (photo -> one expense per item) — the center action.
-              // Same fixed height as the tabs, so the bar never grows.
+              // Add from a photo (a memo or notes, or a list on the boards) — the
+              // center action. Same fixed height as the tabs, so the bar never grows.
               Expanded(
                 child: SizedBox(
                   height: 60,
                   child: Center(
                     child: Tooltip(
-                      message: 'Scan a memo',
+                      message: scanLabel,
                       child: Semantics(
                         button: true,
-                        label: 'Scan a memo',
+                        label: scanLabel,
                         child: Container(
                           width: 50,
                           height: 50,
@@ -280,7 +297,7 @@ class _MoreSheet extends StatelessWidget {
     final p = Palette.of(context);
     final app = context.watch<AppState>();
     final theme = context.watch<ThemeController>();
-    final email = Supabase.instance.client.auth.currentUser?.email;
+    final email = isConfigured ? Supabase.instance.client.auth.currentUser?.email : null;
     return Container(
       decoration: BoxDecoration(
         color: p.card,

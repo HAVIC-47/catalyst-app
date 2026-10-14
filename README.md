@@ -44,7 +44,13 @@ modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalys
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 
-**New in 1.2.1:** board columns move too — press and hold a column's title, then drag it left or right.
+**New in 1.3.0:** the **+** reads screenshots too. Choose a screenshot of your notes (Notepad, any notes
+app) with expenses and income and they're added to your ledger — categories the note names that you don't
+have yet are created for you, and you're told which. On **To-do** and **To buy**, **+** adds a whole list
+from a screenshot straight onto the board (with Undo), and both boards get an **AI summary**. And every
+transaction in the **Ledger** now has a pen: edit anything about it, and every total updates.
+
+**1.2.1:** board columns move too — press and hold a column's title, then drag it left or right.
 
 **1.2.0:** **To-do** and **To buy** boards — Jira-style columns you drag tickets across (press and
 hold a ticket); **AI summaries and suggestions** for your money, savings, goals, bills, journal and mood, by
@@ -69,17 +75,22 @@ pull down to refresh, or just reopen the app.
   mood distribution, savings, mood tags and category frequency. Choose which sections to show in
   Settings — the choice is shared with the web app.
 - **Ledger** — every transaction grouped by day, with search (note, category, place, amount, even
-  "october" or "monday") and filters by type, period or date range, category and amount.
-- **Memo scanner** — tap **+** in the middle of the bottom bar, take or choose a photo of a memo/receipt,
-  check what it found (shop, date, every item with its category), and each item — plus VAT or service charge —
-  is added as its own expense, with any discount shared out. Reads Bengali and English, printed or handwritten.
+  "october" or "monday") and filters by type, period or date range, category and amount. Tap the pen on
+  any transaction to change its type, amount, category, date, time, place or note (or delete it) — every
+  total in the app follows straight away.
+- **Memo scanner** — tap **+** in the middle of the bottom bar and take a photo of a memo/receipt, or choose
+  a photo or a screenshot of your notes (Notepad, any notes app) with expenses and income. Check what it found,
+  then save: a memo's items — plus VAT or service charge — each become an expense, with any discount shared
+  out; a note's lines become expenses and income, and categories it names that you don't have yet are created
+  for you. Reads Bengali and English, printed or handwritten.
 - **To-do and To buy** — Jira-style boards in More: status columns (To do → In progress → Done; To buy →
   In cart → Bought), numbered tickets with priority, due date, notes and — on to-buy lists — a price. Press and
   hold a ticket to drag it within or across columns, or a column's title to move the column left or right (the
-  board scrolls when you reach an edge); tap a ticket to edit it.
+  board scrolls when you reach an edge); tap a ticket to edit it. On a board, **+** adds a whole list from a
+  screenshot of your notes — every item goes straight onto the board (ticked ones as done or bought), with Undo.
 - **AI summaries and suggestions** — a weekly, monthly or yearly read of your ledger, savings, goals, bills,
-  journal and mood, with suggestions to manage money, save more or feel better — on each of those screens and
-  the dashboard. Written by Gemini on the web app's server and saved, so the web and the app show the same one.
+  journal, mood and to-do and to-buy boards, with suggestions to manage money, save more, feel better or get
+  through the list — on each of those screens and the dashboard. Written by Gemini on the web app's server and saved, so the web and the app show the same one.
 - **Quick entry** — expense and income in one go, five moods with context tags (work, family, travel…),
   and savings; each with a time, place and note.
 - **Budgets** — monthly limits per category that fill up as you spend and turn red when you go over.
@@ -119,9 +130,9 @@ app's `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`:
 { "SUPABASE_URL": "https://YOUR-PROJECT.supabase.co", "SUPABASE_ANON_KEY": "your-anon-key" }
 ```
 
-The memo scanner sends photos to the web app's `/api/scan-memo`, and the AI summaries call its
-`/api/ai-insights` (set `API_BASE_URL` to point them elsewhere; it defaults to the live site), with the user's
-login token. The Gemini key lives only on that server — it is never in this repo or the APK.
+The memo scanner sends photos to the web app's `/api/scan-memo`, the list scanner to its `/api/scan-list`,
+and the AI summaries call its `/api/ai-insights` (set `API_BASE_URL` to point them elsewhere; it defaults to
+the live site), with the user's login token. The Gemini key lives only on that server — it is never in this repo or the APK.
 
 The anon key is public by design; every table is protected by row-level security, so each account
 only ever sees its own rows. The database schema and its hardening live in the web repo
@@ -144,9 +155,12 @@ lib/
   data/app_state.dart  central store — mirrors the web's useAppData
   data/secure_session_storage.dart  login session in Keystore-encrypted storage
   data/insights.dart   AI summaries client (the web's /api/ai-insights)
-  screens/memo_sheet.dart  memo scanner: photo -> review -> one expense per item
+  data/scan.dart       photo picker + the web's photo readers (/api/scan-memo, /api/scan-list)
+  screens/memo_sheet.dart  memo scanner: memo -> one expense per item; notes -> expenses, income, new categories
+  screens/list_scan_sheet.dart  list scanner: screenshot of a list -> tickets on the board, with Undo
   screens/boards_screen.dart  To-do / To buy boards with drag and drop
   widgets/ai_insights.dart  the AI summary card
+  widgets/scan_ui.dart  pieces shared by the two scanners
   util/limits.dart     text length limits (same as the database checks)
   theme/               design tokens (same values as the web's globals.css)
   widgets/             cards, buttons, segmented controls, charts, mood faces

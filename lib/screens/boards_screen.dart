@@ -1,7 +1,9 @@
 // To-do and To buy — port of the web's Jira-style boards (/app/todo,
 // /app/shopping): boards with status columns and tickets. Long-press a ticket to
 // drag it within or across columns (the board and page scroll when you hold it
-// near an edge); tap it to edit. Same tables as the web, so both stay in sync.
+// near an edge); tap it to edit. The + in the bottom bar adds a whole list from a
+// screenshot (list_scan_sheet.dart), and an AI summary sits under the title.
+// Same tables as the web, so both stay in sync.
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -9,18 +11,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/app_state.dart';
+import '../data/insights.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
 import '../util/limits.dart';
+import '../widgets/ai_insights.dart';
 import '../widgets/ui.dart';
+import 'list_scan_sheet.dart';
 
-typedef _Copy = ({
+typedef BoardCopy = ({
   String kicker,
   String title,
   String accent,
@@ -33,7 +37,7 @@ typedef _Copy = ({
   String placeholder,
 });
 
-const Map<BoardKind, _Copy> _copy = {
+const Map<BoardKind, BoardCopy> boardCopy = {
   BoardKind.todo: (
     kicker: 'To-do',
     title: 'Get it',
@@ -60,10 +64,10 @@ const Map<BoardKind, _Copy> _copy = {
   ),
 };
 
-String _noun(BoardKind k, [int n = 1]) => '${_copy[k]!.item}${n == 1 ? '' : 's'}';
+String ticketNoun(BoardKind k, [int n = 1]) => '${boardCopy[k]!.item}${n == 1 ? '' : 's'}';
 
 /// A failed save as a sentence (with a hint when the boards tables are missing).
-String _boardError(Object e) {
+String boardError(Object e) {
   final msg = e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
   if (RegExp(r'(board|ticket).*(does not exist|schema cache)', caseSensitive: false).hasMatch(msg)) {
     return "Boards aren't set up yet — run db/supabase.sql in Supabase.";
@@ -83,7 +87,6 @@ class BoardsScreen extends StatefulWidget {
 }
 
 class _BoardsScreenState extends State<BoardsScreen> {
-  String? _selected; // board id — the one last opened, per kind (this device)
   final _page = ScrollController();
   final _board = ScrollController();
   final _viewport = GlobalKey();
@@ -99,16 +102,6 @@ class _BoardsScreenState extends State<BoardsScreen> {
   Offset? _pointer; // global pointer position while dragging
   Timer? _autoScroll;
 
-  String get _prefsKey => 'board:${widget.kind.name}';
-
-  @override
-  void initState() {
-    super.initState();
-    SharedPreferences.getInstance().then((p) {
-      if (mounted) setState(() => _selected = p.getString(_prefsKey));
-    });
-  }
-
   @override
   void dispose() {
     _autoScroll?.cancel();
@@ -118,8 +111,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
   }
 
   void _choose(String id) {
-    setState(() => _selected = id);
-    SharedPreferences.getInstance().then((p) => p.setString(_prefsKey, id));
+    context.read<AppState>().selectBoard(widget.kind, id);
     if (_board.hasClients) _board.jumpTo(0);
   }
 
@@ -271,32 +263,32 @@ class _BoardsScreenState extends State<BoardsScreen> {
 
   // ---------------------------------------------------------------- board actions
   Future<void> _newBoard() async {
-    final copy = _copy[widget.kind]!;
+    final copy = boardCopy[widget.kind]!;
     final name = await _askName(context, title: 'New ${copy.board}', hint: copy.hint, action: 'Create');
     if (name == null || !mounted) return;
     try {
       final b = await context.read<AppState>().createBoard(name, widget.kind);
       _choose(b.id);
     } catch (e) {
-      if (mounted) showError(context, _boardError(e));
+      if (mounted) showError(context, boardError(e));
     }
   }
 
   Future<void> _boardMenu(String action, Board board) async {
     final app = context.read<AppState>();
-    final copy = _copy[widget.kind]!;
+    final copy = boardCopy[widget.kind]!;
     try {
       if (action == 'rename') {
         final name = await _askName(context, title: 'Rename ${copy.board}', initial: board.name, hint: copy.hint);
         if (name != null && name != board.name) await app.renameBoard(board.id, name);
       } else if (action == 'delete') {
         final n = app.tickets.where((t) => t.boardId == board.id).length;
-        final what = n > 0 ? ' and its $n ${_noun(widget.kind, n)}' : '';
+        final what = n > 0 ? ' and its $n ${ticketNoun(widget.kind, n)}' : '';
         if (!await confirm(context, 'Delete "${board.name}"$what?')) return;
         await app.removeBoard(board.id);
       }
     } catch (e) {
-      if (mounted) showError(context, _boardError(e));
+      if (mounted) showError(context, boardError(e));
     }
   }
 
@@ -312,12 +304,12 @@ class _BoardsScreenState extends State<BoardsScreen> {
         case 'right':
           await app.moveColumn(c.id, 1);
         case 'delete':
-          final what = ticketCount > 0 ? ' and its $ticketCount ${_noun(widget.kind, ticketCount)}' : '';
+          final what = ticketCount > 0 ? ' and its $ticketCount ${ticketNoun(widget.kind, ticketCount)}' : '';
           if (!await confirm(context, 'Delete "${c.name}"$what?')) return;
           await app.removeColumn(c.id);
       }
     } catch (e) {
-      if (mounted) showError(context, _boardError(e));
+      if (mounted) showError(context, boardError(e));
     }
   }
 
@@ -327,7 +319,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
     try {
       await context.read<AppState>().createColumn(boardId, name);
     } catch (e) {
-      if (mounted) showError(context, _boardError(e));
+      if (mounted) showError(context, boardError(e));
     }
   }
 
@@ -344,9 +336,9 @@ class _BoardsScreenState extends State<BoardsScreen> {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final app = context.watch<AppState>();
-    final copy = _copy[widget.kind]!;
+    final copy = boardCopy[widget.kind]!;
     final mine = app.boards.where((b) => b.kind == widget.kind).toList();
-    final board = mine.where((b) => b.id == _selected).firstOrNull ?? mine.firstOrNull;
+    final board = app.boardOf(widget.kind);
     final colW = math.min(MediaQuery.sizeOf(context).width * 0.84, 320.0);
     _extent = colW + _gap;
     _cardKeys.removeWhere((id, _) => !app.tickets.any((t) => t.id == id));
@@ -370,6 +362,13 @@ class _BoardsScreenState extends State<BoardsScreen> {
                 kicker: '${copy.kicker} · ${mine.length} ${copy.board}${mine.length == 1 ? '' : 's'}',
                 title: copy.title,
                 accent: copy.accent,
+              ),
+            ),
+            Padding(
+              padding: pad,
+              child: AiInsightsCard(
+                topics: [widget.kind == BoardKind.todo ? InsightTopic.todo : InsightTopic.shopping],
+                initiallyOpen: false,
               ),
             ),
             if (mine.isNotEmpty)
@@ -399,6 +398,17 @@ class _BoardsScreenState extends State<BoardsScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 4, 8),
                 child: _BoardTitle(board: board, onMenu: (a) => _boardMenu(a, board)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'Tip: tap '),
+                    TextSpan(text: '+', style: TextStyle(fontWeight: FontWeight.w700, color: p.muted(0.7))),
+                    TextSpan(text: ' below to add ${ticketNoun(widget.kind, 2)} from a screenshot of your notes.'),
+                  ]),
+                  style: bodyStyle(p, 12, color: p.muted(0.45)),
+                ),
               ),
               _columns(app, board, colW),
             ],
@@ -534,7 +544,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: p.line)),
                       child: Text(
-                        _dragging != null ? 'Drop here' : (index == 0 ? 'Add a ${_noun(board.kind)} below' : 'Drag here'),
+                        _dragging != null ? 'Drop here' : (index == 0 ? 'Add a ${ticketNoun(board.kind)} below' : 'Drag here'),
                         style: bodyStyle(p, 12, color: p.muted(0.35)),
                       ),
                     ),
@@ -673,7 +683,7 @@ class _BoardTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final app = context.watch<AppState>();
-    final copy = _copy[board.kind]!;
+    final copy = boardCopy[board.kind]!;
     final cols = app.columnsOf(board.id);
     final doneId = cols.length > 1 ? cols.last.id : null;
     final items = app.tickets.where((t) => t.boardId == board.id).toList();
@@ -842,8 +852,8 @@ class _ColumnPreview extends StatelessWidget {
   }
 }
 
-class _PriorityIcon extends StatelessWidget {
-  const _PriorityIcon(this.priority);
+class PriorityIcon extends StatelessWidget {
+  const PriorityIcon(this.priority, {super.key});
 
   final TicketPriority priority;
 
@@ -896,7 +906,7 @@ class _TicketCard extends StatelessWidget {
           ),
           const SizedBox(height: 7),
           Row(children: [
-            _PriorityIcon(ticket.priority),
+            PriorityIcon(ticket.priority),
             const SizedBox(width: 8),
             Text('#${ticket.number}', style: meta),
             if (due != null) ...[
@@ -961,7 +971,7 @@ class _QuickAddState extends State<_QuickAdd> {
       _text.clear();
       _focus.requestFocus(); // ready for the next one
     } catch (e) {
-      if (mounted) showError(context, _boardError(e));
+      if (mounted) showError(context, boardError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -981,7 +991,7 @@ class _QuickAddState extends State<_QuickAdd> {
               WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
             },
             icon: Icon(LucideIcons.plus, size: 16, color: p.muted(0.45)),
-            label: Text('Add ${_noun(widget.kind)}', style: bodyStyle(p, 13.5, color: p.muted(0.45))),
+            label: Text('Add ${ticketNoun(widget.kind)}', style: bodyStyle(p, 13.5, color: p.muted(0.45))),
           ),
         ),
       );
@@ -999,7 +1009,7 @@ class _QuickAddState extends State<_QuickAdd> {
             textInputAction: TextInputAction.done,
             inputFormatters: maxChars(Limits.title),
             onSubmitted: (_) => _submit(),
-            decoration: InputDecoration(hintText: _copy[widget.kind]!.placeholder),
+            decoration: InputDecoration(hintText: boardCopy[widget.kind]!.placeholder),
           ),
           const SizedBox(height: 8),
           Row(children: [
@@ -1056,7 +1066,7 @@ class _NewBoardCard extends StatefulWidget {
 }
 
 class _NewBoardCardState extends State<_NewBoardCard> {
-  late final _name = TextEditingController(text: _copy[widget.kind]!.suggested);
+  late final _name = TextEditingController(text: boardCopy[widget.kind]!.suggested);
   bool _busy = false;
 
   @override
@@ -1079,7 +1089,7 @@ class _NewBoardCardState extends State<_NewBoardCard> {
       final b = await context.read<AppState>().createBoard(n, widget.kind);
       widget.onCreated(b.id);
     } catch (e) {
-      if (mounted) showError(context, _boardError(e));
+      if (mounted) showError(context, boardError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1088,7 +1098,7 @@ class _NewBoardCardState extends State<_NewBoardCard> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final copy = _copy[widget.kind]!;
+    final copy = boardCopy[widget.kind]!;
     return CardBox(
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -1120,6 +1130,16 @@ class _NewBoardCardState extends State<_NewBoardCard> {
           Text(
             'Starts with ${defaultBoardColumns[widget.kind]!.join(' · ')} — rename them or add more any time.',
             style: bodyStyle(p, 12, color: p.muted(0.4)),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+              onPressed: _busy ? null : () => openListScanner(context, widget.kind),
+              icon: Icon(LucideIcons.scanText, size: 16, color: p.accentA(0.9)),
+              label: Text('Or start from a screenshot of your list', style: bodyStyle(p, 13.5, weight: FontWeight.w500, color: p.accentA(0.9))),
+            ),
           ),
         ],
       ),
@@ -1210,20 +1230,20 @@ class _TicketSheetState extends State<_TicketSheet> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
-        showError(context, _boardError(e));
+        showError(context, boardError(e));
         setState(() => _busy = false);
       }
     }
   }
 
   Future<void> _delete(BoardKind kind) async {
-    if (!await confirm(context, 'Delete this ${_noun(kind)}?')) return;
+    if (!await confirm(context, 'Delete this ${ticketNoun(kind)}?')) return;
     if (!mounted) return;
     try {
       await context.read<AppState>().removeTicket(widget.ticket.id);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) showError(context, _boardError(e));
+      if (mounted) showError(context, boardError(e));
     }
   }
 
@@ -1259,7 +1279,7 @@ class _TicketSheetState extends State<_TicketSheet> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Label('#${t.number} · ${board?.name ?? ''}'),
                   const SizedBox(height: 4),
-                  Text('Edit ${_noun(kind)}', style: displayStyle(p, 26)),
+                  Text('Edit ${ticketNoun(kind)}', style: displayStyle(p, 26)),
                 ]),
               ),
               IconButton(tooltip: 'Close', onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.45))),
@@ -1327,7 +1347,7 @@ class _TicketSheetState extends State<_TicketSheet> {
             ),
             const SizedBox(height: 18),
             Row(children: [
-              HairlineIconButton(icon: LucideIcons.trash2, tooltip: 'Delete this ${_noun(kind)}', size: 46, onPressed: () => _delete(kind)),
+              HairlineIconButton(icon: LucideIcons.trash2, tooltip: 'Delete this ${ticketNoun(kind)}', size: 46, onPressed: () => _delete(kind)),
               const SizedBox(width: 10),
               Expanded(child: PrimaryButton(expand: true, label: 'Save', busy: _busy, onPressed: valid ? () => _save(kind) : null)),
             ]),

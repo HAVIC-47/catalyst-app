@@ -1,25 +1,26 @@
 // Memo scanner — port of the web's MemoScanner: take or choose a photo of a memo
-// (receipt), let the web app's /api/scan-memo read it with Gemini, review what it
-// found, then add every item as its own expense. The Gemini key stays on the
-// server; the request carries the user's Supabase session token instead.
-import 'dart:async';
+// (receipt) or a screenshot of notes, let the web app's /api/scan-memo read it
+// with Gemini, review what it found, then save. A memo's items each become an
+// expense; a note's lines become expenses and income, and categories the note
+// names that don't exist yet are created (the user is told which). The Gemini
+// key stays on the server; the request carries the user's Supabase session token.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../config.dart';
 import '../data/app_state.dart';
+import '../data/scan.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
 import '../util/limits.dart';
+import '../widgets/scan_ui.dart';
 import '../widgets/ui.dart';
 import 'entry_sheet.dart';
 
@@ -68,6 +69,25 @@ class _Memo {
   final double discount, total;
 }
 
+/// A note of expenses and income, as the reader returns it.
+class _Notes {
+  _Notes.fromJson(Map<String, dynamic> j)
+      : date = j['date'] as String? ?? '',
+        entries = [
+          for (final e in (j['entries'] as List? ?? const []).whereType<Map>())
+            (
+              type: e['type'] == 'income' ? Kind.income : Kind.expense,
+              name: '${e['name'] ?? ''}',
+              amount: (e['amount'] as num?)?.toDouble() ?? 0,
+              category: '${e['category'] ?? ''}',
+              date: e['date'] as String? ?? '',
+            ),
+        ];
+
+  final String date; // the note's own date, '' if none
+  final List<({Kind type, String name, double amount, String category, String date})> entries;
+}
+
 class _Line {
   _Line(String name, double amount, this.categoryId)
       : name = TextEditingController(text: name),
@@ -87,7 +107,33 @@ class _Line {
   }
 }
 
+/// A line read from a note: expense or income, with a category by name (a new
+/// one is created on save).
+class _Entry {
+  _Entry({required this.type, required String name, required double amount, required this.category, required this.date})
+      : name = TextEditingController(text: name),
+        amount = TextEditingController(text: _plain(amount));
+
+  Kind type;
+  final TextEditingController name;
+  final TextEditingController amount;
+  String category;
+  String date; // yyyy-mm-dd
+  bool on = true;
+  bool saved = false;
+
+  double get value => double.tryParse(amount.text) ?? 0;
+
+  void dispose() {
+    name.dispose();
+    amount.dispose();
+  }
+}
+
 String _plain(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : '$v';
+
+// Colors for categories a note creates (the Settings swatches, same as the web).
+const _newColors = ['#C06A33', '#2E8159', '#3D80BC', '#7A4E86', '#B59A3C', '#CB453B', '#4C5B82', '#8E5B6E', '#2F6F6B'];
 
 /// Discount share for each line, proportional to its amount, rounded so the
 /// shares add up exactly (same rule as the web's discountShares).
@@ -106,21 +152,7 @@ List<double> _discountShares(List<double> amounts, double discount) {
   return shares;
 }
 
-/// The photo's real type, from its first bytes.
-String? _mimeOf(Uint8List b) {
-  if (b.length > 3 && b[0] == 0xFF && b[1] == 0xD8) return 'image/jpeg';
-  if (b.length > 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) return 'image/png';
-  if (b.length > 12 && String.fromCharCodes(b.sublist(8, 12)) == 'WEBP') return 'image/webp';
-  if (b.length > 12 && String.fromCharCodes(b.sublist(4, 8)) == 'ftyp') return 'image/heic';
-  return null;
-}
-
-class _ScanError implements Exception {
-  const _ScanError(this.message);
-  final String message;
-}
-
-enum _Step { pick, reading, review, done, error }
+enum _Step { pick, reading, review, notes, done, error }
 
 class MemoSheet extends StatefulWidget {
   const MemoSheet({super.key, required this.onManualEntry});
@@ -132,7 +164,6 @@ class MemoSheet extends StatefulWidget {
 }
 
 class _MemoSheetState extends State<MemoSheet> {
-  final _picker = ImagePicker();
   final _place = TextEditingController();
   _Step _step = _Step.pick;
   Uint8List? _photo;
@@ -145,6 +176,9 @@ class _MemoSheetState extends State<MemoSheet> {
   bool _saving = false;
   int _addedCount = 0;
   double _addedSum = 0;
+  // Notes: their lines, and what was saved (for the done screen).
+  List<_Entry> _entries = [];
+  ({int count, double spent, double earned, List<Category> created})? _noted;
   int _run = 0; // bumps on reset, so a late reply from an abandoned scan is ignored
 
   @override
@@ -152,6 +186,9 @@ class _MemoSheetState extends State<MemoSheet> {
     _place.dispose();
     for (final l in _lines) {
       l.dispose();
+    }
+    for (final e in _entries) {
+      e.dispose();
     }
     super.dispose();
   }
@@ -162,9 +199,14 @@ class _MemoSheetState extends State<MemoSheet> {
       .where((c) => c.kind == Kind.expense && c.name != breakSaving)
       .toList();
 
+  List<Category> get _incomeCats => context.read<AppState>().categories.where((c) => c.kind == Kind.income).toList();
+
   void _reset() {
     for (final l in _lines) {
       l.dispose();
+    }
+    for (final e in _entries) {
+      e.dispose();
     }
     setState(() {
       _run++;
@@ -172,22 +214,21 @@ class _MemoSheetState extends State<MemoSheet> {
       _photo = null;
       _memo = null;
       _lines = [];
+      _entries = [];
+      _noted = null;
       _error = '';
     });
   }
 
   Future<void> _pick(ImageSource source) async {
-    XFile? file;
+    final Uint8List? bytes;
     try {
-      // The reader only needs ~1600px; this keeps the upload small.
-      file = await _picker.pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
-    } on PlatformException {
-      _fail(source == ImageSource.camera ? 'Couldn\'t open the camera — choose a photo instead.' : 'Couldn\'t open your photos.');
+      bytes = await Scan.pick(source);
+    } on ScanError catch (e) {
+      _fail(e.message);
       return;
     }
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    if (!mounted) return;
+    if (bytes == null || !mounted) return;
     await _read(bytes);
   }
 
@@ -200,7 +241,7 @@ class _MemoSheetState extends State<MemoSheet> {
   }
 
   Future<void> _read(Uint8List bytes) async {
-    final mime = _mimeOf(bytes);
+    final mime = imageMime(bytes);
     if (mime == null) {
       _fail('Couldn\'t open that image — use a JPEG or PNG photo.');
       return;
@@ -212,39 +253,25 @@ class _MemoSheetState extends State<MemoSheet> {
       _error = '';
     });
     try {
-      final auth = Supabase.instance.client.auth;
-      var session = auth.currentSession;
-      if (session != null && session.isExpired) session = (await auth.refreshSession()).session;
-      if (session == null) throw const _ScanError('Log in again to scan memos.');
-
-      final res = await http
-          .post(
-            Uri.parse('$apiBaseUrl/api/scan-memo'),
-            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ${session.accessToken}'},
-            body: jsonEncode({
-              'image': base64Encode(bytes),
-              'mimeType': mime,
-              'categories': [for (final c in _cats) c.name],
-              'today': toDateKey(DateTime.now()),
-            }),
-          )
-          .timeout(const Duration(seconds: 75));
-      Map<String, dynamic>? data;
-      try {
-        data = jsonDecode(res.body) as Map<String, dynamic>?;
-      } catch (_) {
-        data = null;
-      }
-      final memo = data?['memo'];
-      if (res.statusCode != 200 || memo is! Map<String, dynamic>) {
-        throw _ScanError(data?['error'] as String? ?? 'The memo reader couldn\'t process this photo.');
-      }
+      final data = await Scan.send('/api/scan-memo', {
+        'image': base64Encode(bytes),
+        'mimeType': mime,
+        'categories': [for (final c in _cats) c.name],
+        'incomeCategories': [for (final c in _incomeCats) c.name],
+        'notes': true, // also read screenshots of notes (expenses and income)
+        'today': toDateKey(DateTime.now()),
+      });
       if (!mounted || run != _run) return;
-      _review(_Memo.fromJson(memo));
-    } on _ScanError catch (e) {
+      final notes = data['notes'], memo = data['memo'];
+      if (notes is Map<String, dynamic>) {
+        _reviewNotes(_Notes.fromJson(notes));
+      } else if (memo is Map<String, dynamic>) {
+        _review(_Memo.fromJson(memo));
+      } else {
+        throw const ScanError('The memo reader couldn\'t process this photo.');
+      }
+    } on ScanError catch (e) {
       if (run == _run) _fail(e.message);
-    } on TimeoutException {
-      if (run == _run) _fail('The memo reader took too long — try again.');
     } catch (_) {
       if (run == _run) _fail('No connection — try again.');
     }
@@ -327,6 +354,136 @@ class _MemoSheetState extends State<MemoSheet> {
     }
   }
 
+  // ---------------------------------------------------------------- notes
+  List<Category> _catsOf(Kind type) => type == Kind.income ? _incomeCats : _cats;
+
+  Category? _findCat(Kind type, String name) {
+    final n = name.trim().toLowerCase();
+    return context.read<AppState>().categories.where((c) => c.kind == type && c.name.toLowerCase() == n).firstOrNull;
+  }
+
+  String _categoryOf(_Entry e) {
+    final name = _clip(e.category, Limits.name);
+    return name.isEmpty ? 'Other' : name;
+  }
+
+  void _reviewNotes(_Notes n) {
+    final fallback = n.date.isNotEmpty ? n.date : toDateKey(DateTime.now());
+    for (final e in _entries) {
+      e.dispose();
+    }
+    setState(() {
+      _entries = [
+        for (final e in n.entries)
+          _Entry(
+            type: e.type,
+            name: e.name,
+            amount: e.amount,
+            // The user's own spelling when the category exists.
+            category: _findCat(e.type, e.category)?.name ?? e.category,
+            date: e.date.isNotEmpty ? e.date : fallback,
+          ),
+      ];
+      _noted = null;
+      _time = nowTime();
+      _step = _Step.notes;
+    });
+  }
+
+  List<_Entry> get _chosenEntries => _entries.where((e) => e.on && !e.saved && e.value > 0).toList();
+
+  /// Categories the chosen lines name that the user doesn't have yet (created on save).
+  List<(Kind, String)> _freshCats(List<_Entry> chosen) {
+    final fresh = <String, (Kind, String)>{};
+    for (final e in chosen) {
+      final name = _categoryOf(e);
+      if (_findCat(e.type, name) == null) fresh.putIfAbsent('${e.type.name}:${name.toLowerCase()}', () => (e.type, name));
+    }
+    return fresh.values.toList();
+  }
+
+  Future<void> _saveNotes() async {
+    final chosen = _chosenEntries;
+    if (chosen.isEmpty || _saving) return;
+    final app = context.read<AppState>();
+    setState(() {
+      _saving = true;
+      _error = '';
+    });
+    final created = <Category>[];
+    var done = 0;
+    var spent = 0.0, earned = 0.0;
+    // Keeps what did get saved, so the done screen tells the whole story even after a retry.
+    void tally() {
+      final prev = _noted;
+      _noted = (
+        count: (prev?.count ?? 0) + done,
+        spent: (prev?.spent ?? 0) + spent,
+        earned: (prev?.earned ?? 0) + earned,
+        created: [...?prev?.created, ...created],
+      );
+    }
+
+    try {
+      // 1. Categories the note named that don't exist yet.
+      final byKey = <String, Category>{};
+      for (final e in chosen) {
+        final name = _categoryOf(e);
+        final k = '${e.type.name}:${name.toLowerCase()}';
+        if (byKey.containsKey(k)) continue;
+        final existing = _findCat(e.type, name);
+        if (existing != null) {
+          byKey[k] = existing;
+          continue;
+        }
+        final c = await app.createCategory(
+          name: name,
+          kind: e.type,
+          color: _newColors[app.categories.length % _newColors.length],
+          sort: app.categories.where((c) => c.kind == e.type).length,
+        );
+        created.add(c);
+        byKey[k] = c;
+      }
+      // 2. One entry per line.
+      for (final e in chosen) {
+        final cat = byKey['${e.type.name}:${_categoryOf(e).toLowerCase()}']!;
+        final amount = (e.value * 100).roundToDouble() / 100;
+        await app.addMoney(NewTxn(
+          kind: e.type,
+          amount: amount,
+          categoryId: cat.id,
+          categoryName: cat.name,
+          note: _clip(e.name.text, Limits.note),
+          occurredOn: e.date,
+          occurredAt: combineDateTime(e.date, _time),
+        ));
+        // Mark it saved right away so a retry after an error never adds it twice.
+        e.saved = true;
+        done++;
+        if (e.type == Kind.income) {
+          earned += amount;
+        } else {
+          spent += amount;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        tally();
+        _step = _Step.done;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is PostgrestException ? e.message : 'Couldn\'t save — check your connection.';
+      setState(() {
+        tally();
+        _error = done > 0 ? 'Added $done of ${chosen.length}. $msg Tap Add again for the rest.' : msg;
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   static String _clip(String s, int max) {
     final t = s.trim();
     return t.length > max ? t.substring(0, max) : t;
@@ -335,83 +492,19 @@ class _MemoSheetState extends State<MemoSheet> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final inset = MediaQuery.of(context).viewInsets.bottom;
     final body = switch (_step) {
       _Step.pick => _pickView(p),
-      _Step.reading => _readingView(p),
+      _Step.reading => ScanReading(photo: _photo, text: 'Reading the memo…'),
       _Step.review => _reviewView(p),
-      _Step.done => _doneView(p),
-      _Step.error => _errorView(p),
+      _Step.notes => _notesView(p),
+      _Step.done => _noted != null ? _notesDoneView(p, _noted!) : _doneView(p),
+      _Step.error => ScanFailed(photo: _photo, message: _error, onRetry: _reset),
     };
-    return Padding(
-      padding: EdgeInsets.only(bottom: inset),
-      child: FractionallySizedBox(
-        heightFactor: _step == _Step.review ? 0.94 : null,
-        child: Container(
-          decoration: BoxDecoration(
-            color: p.card,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            border: Border.all(color: p.line),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: p.inkA(0.2), borderRadius: BorderRadius.circular(4))),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 8, 14),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Label('Memo'),
-                          const SizedBox(height: 4),
-                          Text('Scan a memo', style: displayStyle(p, 30)),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Close',
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(LucideIcons.x, color: p.muted(0.4)),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(color: p.line, height: 1),
-              if (_step == _Step.review) Expanded(child: body) else Flexible(child: body),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _bigButton(Palette p, {required IconData icon, required String label, required bool primary, required VoidCallback onTap}) {
-    final fg = primary ? p.onAccent : p.muted(0.85);
-    return SizedBox(
-      height: 104,
-      child: Material(
-        color: primary ? p.accent : p.inkA(0.02),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: primary ? BorderSide.none : BorderSide(color: p.line),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 24, color: fg),
-              const SizedBox(height: 8),
-              Text(label, style: bodyStyle(p, 14, weight: FontWeight.w600, color: fg)),
-            ],
-          ),
-        ),
-      ),
+    return ScanSheet(
+      label: 'Memo · notes',
+      title: 'Scan a memo',
+      tall: _step == _Step.review || _step == _Step.notes,
+      body: body,
     );
   }
 
@@ -422,14 +515,18 @@ class _MemoSheetState extends State<MemoSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Take a photo of a memo or receipt, or choose one. Every item becomes its own expense — you check them before anything is saved.',
+            'Take a photo of a memo or receipt — or choose a screenshot of your notes (Notepad, any notes app, a chat) with '
+            'expenses and income. You check everything before it\'s saved, and categories your note names that you don\'t '
+            'have yet are created for you.',
             style: bodyStyle(p, 14, color: p.muted(0.6), height: 1.5),
           ),
           const SizedBox(height: 18),
           Row(children: [
-            Expanded(child: _bigButton(p, icon: LucideIcons.camera, label: 'Take photo', primary: true, onTap: () => _pick(ImageSource.camera))),
+            Expanded(child: ScanChoice(icon: LucideIcons.camera, label: 'Take photo', primary: true, onTap: () => _pick(ImageSource.camera))),
             const SizedBox(width: 12),
-            Expanded(child: _bigButton(p, icon: LucideIcons.imageUp, label: 'Choose photo', primary: false, onTap: () => _pick(ImageSource.gallery))),
+            Expanded(
+              child: ScanChoice(icon: LucideIcons.imageUp, label: 'Choose photo or screenshot', primary: false, onTap: () => _pick(ImageSource.gallery)),
+            ),
           ]),
           const SizedBox(height: 16),
           Center(
@@ -437,63 +534,6 @@ class _MemoSheetState extends State<MemoSheet> {
               onPressed: widget.onManualEntry,
               child: Text('Add an entry by hand instead', style: bodyStyle(p, 12.5, color: p.muted(0.55))),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _preview(Palette p, double maxHeight) => _photo == null
-      ? const SizedBox.shrink()
-      : ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.memory(_photo!, fit: BoxFit.contain),
-          ),
-        );
-
-  Widget _readingView(Palette p) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _preview(p, 220),
-          const SizedBox(height: 18),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: p.accent)),
-            const SizedBox(width: 10),
-            Text('Reading the memo…', style: bodyStyle(p, 14, color: p.muted(0.75))),
-          ]),
-          const SizedBox(height: 6),
-          Text('Usually a few seconds.', style: bodyStyle(p, 12, color: p.muted(0.5))),
-        ],
-      ),
-    );
-  }
-
-  Widget _errorView(Palette p) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _preview(p, 160),
-          const SizedBox(height: 16),
-          Semantics(
-            liveRegion: true,
-            child: Text(_error, textAlign: TextAlign.center, style: bodyStyle(p, 14, color: p.expense)),
-          ),
-          const SizedBox(height: 16),
-          HairlineButton(
-            height: 44,
-            onPressed: _reset,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(LucideIcons.rotateCcw, size: 16, color: p.muted(0.8)),
-              const SizedBox(width: 8),
-              Text('Try again', style: bodyStyle(p, 14, color: p.muted(0.85))),
-            ]),
           ),
         ],
       ),
@@ -513,17 +553,74 @@ class _MemoSheetState extends State<MemoSheet> {
           const SizedBox(height: 4),
           Text('${formatCurrency(_addedSum)}${place.isEmpty ? '' : ' · $place'}', style: monoStyle(p, 13, color: p.muted(0.6))),
           const SizedBox(height: 18),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            HairlineButton(
-              height: 44,
-              onPressed: _reset,
-              child: Text('Scan another', style: bodyStyle(p, 14, color: p.muted(0.85))),
-            ),
-            const SizedBox(width: 10),
-            PrimaryButton(label: 'Done', height: 44, onPressed: () => Navigator.pop(context)),
-          ]),
+          _doneButtons(p),
         ],
       ),
+    );
+  }
+
+  Widget _doneButtons(Palette p) => Row(mainAxisSize: MainAxisSize.min, children: [
+        HairlineButton(
+          height: 44,
+          onPressed: _reset,
+          child: Text('Scan another', style: bodyStyle(p, 14, color: p.muted(0.85))),
+        ),
+        const SizedBox(width: 10),
+        PrimaryButton(label: 'Done', height: 44, onPressed: () => Navigator.pop(context)),
+      ]);
+
+  Widget _notesDoneView(Palette p, ({int count, double spent, double earned, List<Category> created}) n) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 32),
+      child: Column(
+        children: [
+          Icon(LucideIcons.circleCheck, size: 40, color: p.income),
+          const SizedBox(height: 10),
+          Semantics(
+            liveRegion: true,
+            child: Text('Added ${n.count} ${n.count == 1 ? 'entry' : 'entries'}', style: displayStyle(p, 24, weight: FontWeight.w600)),
+          ),
+          const SizedBox(height: 4),
+          Text.rich(
+            TextSpan(children: [
+              if (n.spent > 0) TextSpan(text: 'Spent ${formatCurrency(n.spent)}', style: TextStyle(color: p.expense)),
+              if (n.spent > 0 && n.earned > 0) const TextSpan(text: ' · '),
+              if (n.earned > 0) TextSpan(text: 'Earned ${formatCurrency(n.earned)}', style: TextStyle(color: p.income)),
+            ]),
+            textAlign: TextAlign.center,
+            style: monoStyle(p, 13, color: p.muted(0.6)),
+          ),
+          if (n.created.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            ScanNotice(
+              lead: 'New ${n.created.length == 1 ? 'category' : 'categories'} created: ',
+              text: '${n.created.map((c) => '${c.name} (${c.kind.name})').join(', ')}. Rename or recolor them in Settings.',
+            ),
+          ],
+          const SizedBox(height: 18),
+          _doneButtons(p),
+        ],
+      ),
+    );
+  }
+
+  Widget _footer(Palette p, {required String label, required VoidCallback? onAdd}) {
+    return Container(
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: p.line))),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+      child: Row(children: [
+        HairlineButton(
+          height: 46,
+          onPressed: _saving ? null : _reset,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(LucideIcons.rotateCcw, size: 16, color: p.muted(0.75)),
+            const SizedBox(width: 8),
+            Text('Retake', style: bodyStyle(p, 14, color: p.muted(0.8))),
+          ]),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: PrimaryButton(expand: true, busy: _saving, label: label, onPressed: onAdd)),
+      ]),
     );
   }
 
@@ -622,11 +719,11 @@ class _MemoSheetState extends State<MemoSheet> {
                 runSpacing: 6,
                 children: [
                   Text.rich(TextSpan(children: [
-                    const TextSpan(text: 'Memo total '),
+                    const TextSpan(text: 'Memo total '),
                     TextSpan(text: m.total > 0 ? formatCurrency(m.total) : '—', style: TextStyle(color: p.ink)),
                   ]), style: monoStyle(p, 13, color: p.muted(0.55))),
                   Text.rich(TextSpan(children: [
-                    const TextSpan(text: 'Adding '),
+                    const TextSpan(text: 'Adding '),
                     TextSpan(text: formatCurrency(sum), style: TextStyle(color: p.expense)),
                   ]), style: monoStyle(p, 13, color: p.muted(0.55))),
                 ],
@@ -642,33 +739,24 @@ class _MemoSheetState extends State<MemoSheet> {
             ],
           ),
         ),
-        Container(
-          decoration: BoxDecoration(border: Border(top: BorderSide(color: p.line))),
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
-          child: Row(children: [
-            HairlineButton(
-              height: 46,
-              onPressed: _saving ? null : _reset,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(LucideIcons.rotateCcw, size: 16, color: p.muted(0.75)),
-                const SizedBox(width: 8),
-                Text('Retake', style: bodyStyle(p, 14, color: p.muted(0.8))),
-              ]),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: PrimaryButton(
-                expand: true,
-                busy: _saving,
-                label: 'Add ${chosen.length} expense${chosen.length == 1 ? '' : 's'}',
-                onPressed: chosen.isEmpty ? null : () => _save(chosen, sum),
-              ),
-            ),
-          ]),
+        _footer(
+          p,
+          label: 'Add ${chosen.length} expense${chosen.length == 1 ? '' : 's'}',
+          onAdd: chosen.isEmpty ? null : () => _save(chosen, sum),
         ),
       ],
     );
   }
+
+  static const _plainInput = InputDecoration(
+    isDense: true,
+    filled: false,
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    disabledBorder: InputBorder.none,
+    contentPadding: EdgeInsets.symmetric(vertical: 8),
+  );
 
   Widget _lineRow(Palette p, _Line l, double share, List<Category> cats) {
     final enabled = !l.saved;
@@ -689,15 +777,7 @@ class _MemoSheetState extends State<MemoSheet> {
                 enabled: enabled,
                 inputFormatters: maxChars(Limits.title),
                 style: bodyStyle(p, 14),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 8),
-                ),
+                decoration: _plainInput,
               ),
             ),
             Text('৳', style: monoStyle(p, 14, color: p.muted(0.4))),
@@ -711,15 +791,7 @@ class _MemoSheetState extends State<MemoSheet> {
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')), ...maxChars(12)],
                 onChanged: (_) => setState(() {}),
                 style: monoStyle(p, 14),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 8),
-                ),
+                decoration: _plainInput,
               ),
             ),
           ]),
@@ -747,6 +819,164 @@ class _MemoSheetState extends State<MemoSheet> {
                 ),
               ),
             ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _notesView(Palette p) {
+    final chosen = _chosenEntries;
+    final fresh = _freshCats(chosen);
+    double total(Kind k) => (chosen.where((e) => e.type == k).fold<double>(0, (s, e) => s + e.value) * 100).roundToDouble() / 100;
+    final n = _entries.length;
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+            children: [
+              Text(
+                'Found $n ${n == 1 ? 'entry' : 'entries'} in your note. Check them — untick anything you don\'t want — then add.',
+                style: bodyStyle(p, 14, color: p.muted(0.6), height: 1.5),
+              ),
+              if (fresh.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                ScanNotice(
+                  lead: 'New ${fresh.length == 1 ? 'category' : 'categories'} ',
+                  text: 'from your note will be created: ${fresh.map((f) => '${f.$2} (${f.$1.name})').join(', ')}.',
+                ),
+              ],
+              const SizedBox(height: 14),
+              Container(
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line)),
+                child: Column(children: [
+                  for (var i = 0; i < _entries.length; i++) ...[
+                    if (i > 0) Divider(color: p.line, height: 1),
+                    _entryRow(p, _entries[i]),
+                  ],
+                ]),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                runSpacing: 6,
+                children: [
+                  Text.rich(TextSpan(children: [
+                    const TextSpan(text: 'Spending '),
+                    TextSpan(text: formatCurrency(total(Kind.expense)), style: TextStyle(color: p.expense)),
+                  ]), style: monoStyle(p, 13, color: p.muted(0.55))),
+                  Text.rich(TextSpan(children: [
+                    const TextSpan(text: 'Income '),
+                    TextSpan(text: formatCurrency(total(Kind.income)), style: TextStyle(color: p.income)),
+                  ]), style: monoStyle(p, 13, color: p.muted(0.55))),
+                ],
+              ),
+              if (_error.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(_error, style: bodyStyle(p, 12.5, color: p.expense)),
+              ],
+            ],
+          ),
+        ),
+        _footer(
+          p,
+          label: _saving ? 'Adding…' : 'Add ${chosen.length} ${chosen.length == 1 ? 'entry' : 'entries'}',
+          onAdd: chosen.isEmpty ? null : _saveNotes,
+        ),
+      ],
+    );
+  }
+
+  Widget _entryRow(Palette p, _Entry e) {
+    final enabled = !e.saved;
+    final income = e.type == Kind.income;
+    final existing = _findCat(e.type, e.category);
+    // The note's own label comes first while it's new; the user's categories follow.
+    final names = [
+      if (existing == null && e.category.trim().isNotEmpty) e.category,
+      for (final c in _catsOf(e.type)) c.name,
+    ];
+    return Opacity(
+      opacity: e.on && enabled ? 1 : 0.5,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 6, 12, 12),
+        child: Column(children: [
+          Row(children: [
+            Checkbox(
+              value: e.on,
+              activeColor: p.accent,
+              onChanged: enabled ? (v) => setState(() => e.on = v ?? false) : null,
+            ),
+            Expanded(
+              child: TextField(
+                controller: e.name,
+                enabled: enabled,
+                inputFormatters: maxChars(Limits.title),
+                style: bodyStyle(p, 14),
+                decoration: _plainInput,
+              ),
+            ),
+            Text(income ? '+' : '−', style: monoStyle(p, 14, color: income ? p.income : p.expense)),
+            const SizedBox(width: 3),
+            Text('৳', style: monoStyle(p, 14, color: p.muted(0.4))),
+            SizedBox(
+              width: 84,
+              child: TextField(
+                controller: e.amount,
+                enabled: enabled,
+                textAlign: TextAlign.right,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')), ...maxChars(12)],
+                onChanged: (_) => setState(() {}),
+                style: monoStyle(p, 14),
+                decoration: _plainInput,
+              ),
+            ),
+          ]),
+          Padding(
+            padding: const EdgeInsets.only(left: 44),
+            child: IgnorePointer(
+              ignoring: !enabled,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(children: [
+                  SegTabs<Kind>(
+                    options: const [Kind.expense, Kind.income],
+                    value: e.type,
+                    compact: true,
+                    label: (k) => k == Kind.income ? 'Income' : 'Expense',
+                    onChanged: (k) => setState(() => e.type = k),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DateButton(
+                      value: fromDateKey(e.date),
+                      hint: 'Date',
+                      lastDate: DateTime.now(),
+                      onPicked: (d) {
+                        if (d != null) setState(() => e.date = toDateKey(d));
+                      },
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                    child: AppDropdown(
+                      value: existing?.name ?? e.category,
+                      items: names,
+                      labelOf: (name) => existing == null && name == e.category ? 'New: $name' : name,
+                      onChanged: (name) => setState(() => e.category = name),
+                    ),
+                  ),
+                  if (e.saved) ...[
+                    const SizedBox(width: 10),
+                    Text('added', style: monoStyle(p, 11.5, color: p.muted(0.45))),
+                  ],
+                ]),
+              ]),
+            ),
           ),
         ]),
       ),

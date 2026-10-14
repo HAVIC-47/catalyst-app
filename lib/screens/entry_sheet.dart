@@ -1,8 +1,11 @@
 // New-entry sheet — port of the web's EntryModal: Money (expense + income kept
-// separately, saved together), Mood (5 moods, tags, time, note) and Saving.
+// separately, saved together), Mood (5 moods, tags, time, note) and Saving. Also
+// the editor behind the ledger's pen (TxnEditSheet): every total in the app is
+// computed from AppState.transactions, so they all follow an edit straight away.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/app_state.dart';
 import '../models.dart';
@@ -22,6 +25,17 @@ Future<void> openEntry(BuildContext context, {EntryTab tab = EntryTab.money, Str
     useSafeArea: true,
     barrierColor: Colors.black.withValues(alpha: 0.45),
     builder: (_) => EntrySheet(initialTab: tab, dateKey: date ?? toDateKey(DateTime.now())),
+  );
+}
+
+/// The ledger's pen: edit (or delete) an existing transaction.
+Future<void> openTxnEditor(BuildContext context, Txn txn) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    barrierColor: Colors.black.withValues(alpha: 0.45),
+    builder: (_) => TxnEditSheet(txn: txn),
   );
 }
 
@@ -753,6 +767,345 @@ class _SavingFormState extends State<_SavingForm> {
         const SizedBox(height: 22),
         _TintButton(label: 'Save saving', color: p.saving, busy: _saving, onPressed: value == null ? null : submit),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------- edit a transaction
+
+/// Edit an existing transaction (the ledger's pen): type, amount, category, date,
+/// time, place and note — or delete it.
+class TxnEditSheet extends StatefulWidget {
+  const TxnEditSheet({super.key, required this.txn});
+
+  final Txn txn;
+
+  @override
+  State<TxnEditSheet> createState() => _TxnEditSheetState();
+}
+
+class _TxnEditSheetState extends State<TxnEditSheet> {
+  late Kind _kind = widget.txn.kind;
+  late final _amount = TextEditingController(text: groupNumber(widget.txn.amount));
+  late final _place = TextEditingController(text: widget.txn.place);
+  late final _note = TextEditingController(text: widget.txn.note);
+  String? _pick; // category id chosen here; null = the entry's own
+  late String _date = widget.txn.occurredOn;
+  late final String _savedTime = _hhmm(widget.txn.occurredAt);
+  late String _time = _savedTime;
+  String? _busy; // 'save' or 'delete'
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final c in [_amount, _place, _note]) {
+      c.addListener(() => setState(() {}));
+    }
+  }
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _place.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  static String _hhmm(String iso) {
+    final d = parseTs(iso);
+    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  static bool _same(String a, String b) => a.trim().toLowerCase() == b.trim().toLowerCase();
+
+  static String _message(Object e) => e is PostgrestException ? e.message : _friendly(e);
+
+  Future<void> _save(NewTxn next) async {
+    setState(() {
+      _busy = 'save';
+      _error = null;
+    });
+    try {
+      await context.read<AppState>().editMoney(widget.txn.id, next);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = null;
+          _error = _message(e);
+        });
+      }
+    }
+  }
+
+  Future<void> _delete() async {
+    if (_busy != null || !await confirm(context, 'Delete this transaction?')) return;
+    if (!mounted) return;
+    setState(() {
+      _busy = 'delete';
+      _error = null;
+    });
+    try {
+      await context.read<AppState>().removeMoney(widget.txn.id);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = null;
+          _error = _message(e);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final app = context.watch<AppState>();
+    final t = widget.txn;
+    final inset = MediaQuery.of(context).viewInsets.bottom;
+
+    final list = app.categories.where((c) => c.kind == _kind).toList();
+    final picked = _kind != Kind.saving && _pick != null ? list.where((c) => c.id == _pick).firstOrNull : null;
+    // Its own category's tile: by id, or by name for older rows. One deleted since
+    // shows as its saved name ("kept") until another is picked.
+    final own = _kind == t.kind
+        ? list.where((c) => c.id == t.categoryId).firstOrNull ?? list.where((c) => _same(c.name, t.categoryName)).firstOrNull
+        : null;
+    final kept = _kind == t.kind && _kind != Kind.saving && own == null;
+    // Another type: the same name there, else Other, else the first.
+    final near = _kind == t.kind
+        ? null
+        : list.where((c) => _same(c.name, t.categoryName)).firstOrNull ??
+            list.where((c) => _same(c.name, 'Other')).firstOrNull ??
+            list.firstOrNull;
+    final activeId = picked?.id ?? own?.id ?? near?.id;
+    // Left alone, the category stays exactly as saved.
+    final (String?, String)? cat = picked != null
+        ? (picked.id, picked.name)
+        : _kind == t.kind
+            ? (t.categoryId, t.categoryName)
+            : _kind == Kind.saving
+                ? (null, 'Saving')
+                : near != null
+                    ? (near.id, near.name)
+                    : null;
+
+    final value = parseAmount(_amount.text);
+    final touchedWhen = _date != t.occurredOn || _time != _savedTime;
+    final next = value == null || cat == null
+        ? null
+        : NewTxn(
+            kind: _kind,
+            amount: (value * 100).round() / 100,
+            categoryId: cat.$1,
+            categoryName: cat.$2,
+            place: _kind == Kind.saving ? '' : _place.text.trim(),
+            note: _note.text.trim(),
+            occurredOn: _date,
+            // Untouched, the original timestamp stays exactly as it was.
+            occurredAt: touchedWhen ? combineDateTime(_date, _time) : t.occurredAt,
+          );
+    final changed = next != null &&
+        (next.kind != t.kind ||
+            next.amount != t.amount ||
+            next.categoryId != t.categoryId ||
+            next.categoryName != t.categoryName ||
+            next.place != t.place ||
+            next.note != t.note ||
+            next.occurredOn != t.occurredOn ||
+            next.occurredAt != t.occurredAt);
+
+    Widget kindTab(Kind k, String label, IconData icon, Color color) {
+      final on = _kind == k;
+      return Expanded(
+        child: Semantics(
+          button: true,
+          selected: on,
+          label: label,
+          child: GestureDetector(
+            onTap: () => setState(() {
+              _kind = k;
+              _pick = null;
+            }),
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(color: on ? p.inkA(0.06) : Colors.transparent, borderRadius: BorderRadius.circular(9)),
+              child: ExcludeSemantics(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 16, color: on ? color : p.muted(0.45)),
+                    const SizedBox(width: 6),
+                    Text(label, style: bodyStyle(p, 14, weight: FontWeight.w500, color: on ? color : p.muted(0.45))),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: inset),
+      child: FractionallySizedBox(
+        heightFactor: 0.94,
+        child: Container(
+          decoration: BoxDecoration(
+            color: p.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            border: Border.all(color: p.line),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: p.inkA(0.2), borderRadius: BorderRadius.circular(4))),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 8, 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Label(fmt(fromDateKey(t.occurredOn), 'EEE · MMM d, yyyy')),
+                          const SizedBox(height: 4),
+                          Text('Edit transaction', style: displayStyle(p, 30)),
+                        ],
+                      ),
+                    ),
+                    IconButton(tooltip: 'Close', onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.4))),
+                  ],
+                ),
+              ),
+              Divider(color: p.line, height: 1),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: p.line),
+                          color: p.inkA(0.02),
+                        ),
+                        child: Row(children: [
+                          kindTab(Kind.expense, 'Expense', LucideIcons.arrowUpRight, p.expense),
+                          const SizedBox(width: 4),
+                          kindTab(Kind.income, 'Income', LucideIcons.arrowDownLeft, p.income),
+                          const SizedBox(width: 4),
+                          kindTab(Kind.saving, 'Saving', LucideIcons.piggyBank, p.saving),
+                        ]),
+                      ),
+                      const SizedBox(height: 22),
+                      FieldBlock(label: 'Amount', child: AmountField(controller: _amount, large: true, semanticLabel: 'Amount')),
+                      const SizedBox(height: 22),
+                      if (_kind == Kind.saving)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line), color: p.inkA(0.02)),
+                          child: Text("Savings go into your savings pool — they don't have a category.",
+                              style: bodyStyle(p, 12, color: p.muted(0.5))),
+                        )
+                      else
+                        FieldBlock(
+                          label: 'Category',
+                          child: list.isEmpty && !kept
+                              ? Text('No ${_kind.name} categories yet — add them in Settings.', style: bodyStyle(p, 12, color: p.muted(0.45)))
+                              : GridView.count(
+                                  crossAxisCount: 3,
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  mainAxisSpacing: 8,
+                                  crossAxisSpacing: 8,
+                                  childAspectRatio: 1.3,
+                                  children: [
+                                    if (kept)
+                                      _CategoryTile(
+                                        cat: Category(id: '', name: t.categoryName, kind: _kind, color: '#7A746A', sort: -1),
+                                        active: picked == null,
+                                        onTap: () => setState(() => _pick = null),
+                                      ),
+                                    for (final c in list) _CategoryTile(cat: c, active: activeId == c.id, onTap: () => setState(() => _pick = c.id)),
+                                  ],
+                                ),
+                        ),
+                      const SizedBox(height: 22),
+                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(
+                          child: FieldBlock(
+                            label: 'Date',
+                            child: DateButton(
+                              value: fromDateKey(_date),
+                              hint: 'Date',
+                              onPicked: (d) {
+                                if (d != null) setState(() => _date = toDateKey(d));
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: _TimeField(value: _time, onChanged: (v) => setState(() => _time = v))),
+                      ]),
+                      if (_kind != Kind.saving) ...[
+                        const SizedBox(height: 22),
+                        FieldBlock(
+                          label: 'Place',
+                          child: TextField(
+                            controller: _place,
+                            inputFormatters: maxChars(Limits.place),
+                            decoration: InputDecoration(
+                              hintText: 'Star Kabab, Aarong, Pathao…',
+                              prefixIcon: Icon(LucideIcons.mapPin, size: 16, color: p.muted(0.35)),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 22),
+                      FieldBlock(
+                        label: 'Note · optional',
+                        child: TextField(controller: _note, inputFormatters: maxChars(Limits.note), decoration: const InputDecoration(hintText: 'What was it for?')),
+                      ),
+                      if (_error != null) ...[const SizedBox(height: 16), _ErrorText(_error!)],
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(border: Border(top: BorderSide(color: p.line))),
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+                child: Row(children: [
+                  HairlineButton(
+                    height: 46,
+                    onPressed: _busy != null ? null : _delete,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      _busy == 'delete'
+                          ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.6, color: p.expense))
+                          : Icon(LucideIcons.trash2, size: 16, color: p.muted(0.7)),
+                      const SizedBox(width: 8),
+                      Text('Delete', style: bodyStyle(p, 14, color: p.muted(0.8))),
+                    ]),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: PrimaryButton(
+                      expand: true,
+                      busy: _busy == 'save',
+                      label: 'Save changes',
+                      onPressed: next != null && changed && _busy == null ? () => _save(next) : null,
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

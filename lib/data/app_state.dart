@@ -29,6 +29,10 @@ class AppState extends ChangeNotifier {
   List<BoardColumn> boardColumns = [];
   List<Ticket> tickets = [];
 
+  /// The board last opened per kind (this device): the boards screen shows it,
+  /// and the + scanner adds to it.
+  final selectedBoards = <BoardKind, String>{};
+
   /// Vault Mode: every income also adds to the savings pool and every expense
   /// draws from it, so savings reflect true net flow. (Per device, like the web.)
   bool vaultMode = false;
@@ -60,6 +64,10 @@ class AppState extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     vaultMode = prefs.getBool('vaultMode') ?? false;
+    for (final k in BoardKind.values) {
+      final id = prefs.getString('board:${k.name}');
+      if (id != null) selectedBoards.putIfAbsent(k, () => id);
+    }
     if (dashboardHidden == null) {
       dashboardHidden = _parseHidden(_decode(prefs.getString(_dashboardHiddenKey))) ?? [];
       notifyListeners();
@@ -136,6 +144,7 @@ class AppState extends ChangeNotifier {
     boards = [];
     boardColumns = [];
     tickets = [];
+    selectedBoards.clear();
     dashboardHidden = null;
     _dashboardTouched = false;
     notifyListeners();
@@ -187,7 +196,15 @@ class AppState extends ChangeNotifier {
   // ---- money / mood
   Future<void> addMoney(NewTxn t) async {
     final c = await Repo.addTransaction(t);
-    transactions = [c, ...transactions]..sort((a, b) => b.occurredOn.compareTo(a.occurredOn));
+    transactions = [c, ...transactions]..sort(newestFirst);
+    notifyListeners();
+  }
+
+  /// Saves new values for a transaction. Every total (ledger, dashboard, calendar,
+  /// budgets, savings) is computed from [transactions], so they all follow.
+  Future<void> editMoney(String id, NewTxn t) async {
+    final c = await Repo.updateTransaction(id, t);
+    transactions = [for (final x in transactions) x.id == id ? c : x]..sort(newestFirst);
     notifyListeners();
   }
 
@@ -207,10 +224,11 @@ class AppState extends ChangeNotifier {
       moods.where((m) => m.loggedOn == key).toList()..sort((a, b) => a.loggedAt.compareTo(b.loggedAt));
 
   // ---- categories
-  Future<void> createCategory({required String name, required Kind kind, required String color, required int sort}) async {
+  Future<Category> createCategory({required String name, required Kind kind, required String color, required int sort}) async {
     final x = await Repo.addCategory(name: name, kind: kind, color: color, sort: sort);
     categories = [...categories, x];
     notifyListeners();
+    return x;
   }
 
   Future<void> editCategory(String id, {String? name, String? color}) async {
@@ -327,6 +345,18 @@ class AppState extends ChangeNotifier {
       boardColumns.where((c) => c.boardId == boardId).toList()..sort((a, b) => a.sort.compareTo(b.sort));
 
   List<Ticket> ticketsIn(String columnId) => tickets.where((t) => t.columnId == columnId).toList()..sort(byTicketOrder);
+
+  /// The board on screen for [kind]: the one last opened, else the first.
+  Board? boardOf(BoardKind kind) {
+    final mine = boards.where((b) => b.kind == kind);
+    return mine.where((b) => b.id == selectedBoards[kind]).firstOrNull ?? mine.firstOrNull;
+  }
+
+  void selectBoard(BoardKind kind, String id) {
+    selectedBoards[kind] = id;
+    notifyListeners();
+    SharedPreferences.getInstance().then((p) => p.setString('board:${kind.name}', id));
+  }
 
   Future<Board> createBoard(String name, BoardKind kind) async {
     final board = await Repo.addBoard(name: name, kind: kind, sort: boards.length);
@@ -483,6 +513,23 @@ class AppState extends ChangeNotifier {
   Future<void> removeTicket(String id) async {
     await Repo.deleteTicket(id);
     tickets = tickets.where((t) => t.id != id).toList();
+    notifyListeners();
+  }
+
+  /// Adds a batch (a scanned list) to [boardId] in one insert — see [newTicketRows].
+  Future<List<Ticket>> createTickets(String boardId, List<NewTicket> drafts) async {
+    if (drafts.isEmpty) return [];
+    final made = await Repo.addTickets(newTicketRows(boardId, drafts, tickets));
+    tickets = [...tickets, ...made];
+    notifyListeners();
+    return made;
+  }
+
+  Future<void> removeTickets(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await Repo.deleteTickets(ids);
+    final gone = ids.toSet();
+    tickets = tickets.where((t) => !gone.contains(t.id)).toList();
     notifyListeners();
   }
 }

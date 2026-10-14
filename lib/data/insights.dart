@@ -12,7 +12,7 @@ import '../config.dart';
 import '../util/format.dart';
 import '../util/range.dart';
 
-enum InsightTopic { journal, ledger, goals, savings, bills, mood }
+enum InsightTopic { journal, ledger, goals, savings, bills, mood, todo, shopping }
 
 /// Tab label for each topic (same as the web).
 const insightLabels = {
@@ -22,6 +22,8 @@ const insightLabels = {
   InsightTopic.savings: 'Savings',
   InsightTopic.bills: 'Bills',
   InsightTopic.mood: 'Mood',
+  InsightTopic.todo: 'To-do',
+  InsightTopic.shopping: 'To-buy',
 };
 
 class Insight {

@@ -81,6 +81,13 @@ class Txn {
       );
 }
 
+/// The ledger's order (same as the database list): newest day first, then newest
+/// added. A full order, so re-sorting never shuffles a day's entries.
+int newestFirst(Txn a, Txn b) {
+  final d = b.occurredOn.compareTo(a.occurredOn);
+  return d != 0 ? d : b.createdAt.compareTo(a.createdAt);
+}
+
 class NewTxn {
   const NewTxn({
     required this.kind,
@@ -359,6 +366,37 @@ class Ticket {
   Ticket edited({required String title, required String description, required TicketPriority priority, required String? dueOn, required double? amount}) =>
       Ticket(id: id, boardId: boardId, columnId: columnId, number: number, title: title,
           description: description, priority: priority, dueOn: dueOn, amount: amount, sort: sort);
+}
+
+/// A ticket to add — its id, number and sort come with the insert.
+typedef NewTicket = ({String columnId, String title, String description, TicketPriority priority, String? dueOn, double? amount});
+
+/// Rows that add [drafts] to [boardId] in one insert: numbered after the board's
+/// highest number, each joining the bottom of its column in the order given.
+List<Map<String, dynamic>> newTicketRows(String boardId, List<NewTicket> drafts, List<Ticket> existing) {
+  final inBoard = existing.where((t) => t.boardId == boardId);
+  var number = inBoard.fold<int>(0, (m, t) => t.number > m ? t.number : m);
+  final bottom = <String, double>{}; // column id -> its last sort
+  for (final t in inBoard) {
+    if (t.sort > (bottom[t.columnId] ?? 0)) bottom[t.columnId] = t.sort;
+  }
+  final rows = <Map<String, dynamic>>[];
+  for (final d in drafts) {
+    final sort = (bottom[d.columnId] ?? 0) + sortStep;
+    bottom[d.columnId] = sort;
+    rows.add({
+      'board_id': boardId,
+      'column_id': d.columnId,
+      'number': ++number,
+      'title': d.title,
+      'description': d.description,
+      'priority': d.priority.name,
+      'due_on': d.dueOn,
+      'amount': d.amount,
+      'sort': sort,
+    });
+  }
+  return rows;
 }
 
 /// Columns a new board starts with (renamable, and more can be added).

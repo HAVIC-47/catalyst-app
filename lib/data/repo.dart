@@ -56,6 +56,10 @@ class Repo {
   static Future<Txn> addTransaction(NewTxn t) async =>
       Txn.fromRow(await _db.from('transactions').insert(t.toRow()).select().single());
 
+  /// Replaces every editable field of a transaction (the ledger's edit button).
+  static Future<Txn> updateTransaction(String id, NewTxn t) async =>
+      Txn.fromRow(await _db.from('transactions').update(t.toRow()).eq('id', id).select().single());
+
   static Future<void> deleteTransaction(String id) => _db.from('transactions').delete().eq('id', id);
 
   // ---- moods
@@ -217,9 +221,15 @@ class Repo {
   static Future<Ticket> addTicket(Map<String, dynamic> row) async =>
       Ticket.fromRow(await _db.from('tickets').insert(row).select().single());
 
+  /// Several at once (a scanned list), in number order.
+  static Future<List<Ticket>> addTickets(List<Map<String, dynamic>> rows) async =>
+      (await _db.from('tickets').insert(rows).select()).map(Ticket.fromRow).toList()..sort((a, b) => a.number.compareTo(b.number));
+
   static Future<void> updateTicket(String id, Map<String, dynamic> patch) => _db.from('tickets').update(patch).eq('id', id);
 
   static Future<void> deleteTicket(String id) => _db.from('tickets').delete().eq('id', id);
+
+  static Future<void> deleteTickets(List<String> ids) => _db.from('tickets').delete().inFilter('id', ids);
 
   // ---- UI preferences (auth user metadata — shared with the web app)
   static Future<Map<String, dynamic>> loadPrefs() async {
