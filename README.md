@@ -34,6 +34,11 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
   <img src="docs/screenshots/list-scan.png" width="200" alt="A to-do list screenshot added straight onto the board" />
   <img src="docs/screenshots/ledger-edit.png" width="200" alt="Editing a transaction from the ledger" />
 </p>
+<p align="center">
+  <img src="docs/screenshots/wallets.png" width="200" alt="Wallets — Cash, bKash, Nagad and Bank balances" />
+  <img src="docs/screenshots/dhar.png" width="200" alt="Dhar / baki — who owes you and whom you owe" />
+  <img src="docs/screenshots/bangla.png" width="200" alt="The calendar with the app in Bangla" />
+</p>
 
 ## Install
 
@@ -43,8 +48,8 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
    file manager — allow it, then tap **Install**.
 3. Log in with your Catalyst account, or create one.
 
-The download is a universal APK (~56 MB) that runs on any Android phone. A smaller build for
-modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst-arm64.apk) (~21 MB), is attached to every
+The download is a universal APK (~60 MB) that runs on any Android phone. A smaller build for
+modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst-arm64.apk) (~22 MB), is attached to every
 [release](https://github.com/HAVIC-47/catalyst-app/releases).
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
