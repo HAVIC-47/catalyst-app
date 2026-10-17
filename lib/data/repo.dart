@@ -7,6 +7,18 @@ import '../models.dart';
 SupabaseClient get _db => Supabase.instance.client;
 
 class Repo {
+  /// The rows each list call last returned, by table — the offline copy
+  /// (data/offline.dart) is made from these, and read back with the same fromRow.
+  static final lastRows = <String, List<Map<String, dynamic>>>{};
+
+  static T Function(Map<String, dynamic>) _keep<T>(String table, T Function(Map<String, dynamic>) fromRow) {
+    final rows = lastRows[table] = [];
+    return (r) {
+      rows.add(r);
+      return fromRow(r);
+    };
+  }
+
   // ---- categories
   static Future<List<Category>> listCategories() async {
     final rows = await _db
@@ -15,7 +27,7 @@ class Repo {
         .order('kind', ascending: true)
         .order('sort', ascending: true)
         .order('name', ascending: true);
-    return rows.map(Category.fromRow).toList();
+    return rows.map(_keep('categories', Category.fromRow)).toList();
   }
 
   static Future<Category> addCategory({required String name, required Kind kind, required String color, required int sort}) async {
@@ -50,11 +62,12 @@ class Repo {
         .select()
         .order('occurred_on', ascending: false)
         .order('created_at', ascending: false);
-    return rows.map(Txn.fromRow).toList();
+    return rows.map(_keep('transactions', Txn.fromRow)).toList();
   }
 
-  static Future<Txn> addTransaction(NewTxn t) async =>
-      Txn.fromRow(await _db.from('transactions').insert(t.toRow()).select().single());
+  /// [id] lets an entry made offline keep its own id, so a retried sync never adds it twice.
+  static Future<Txn> addTransaction(NewTxn t, {String? id}) async =>
+      Txn.fromRow(await _db.from('transactions').insert({...t.toRow(), 'id': ?id}).select().single());
 
   /// Replaces every editable field of a transaction (the ledger's edit button).
   static Future<Txn> updateTransaction(String id, NewTxn t) async =>
@@ -65,7 +78,7 @@ class Repo {
   // ---- moods
   static Future<List<MoodLog>> listMoods() async {
     final rows = await _db.from('mood_logs').select().order('created_at', ascending: false);
-    return rows.map(MoodLog.fromRow).toList();
+    return rows.map(_keep('mood_logs', MoodLog.fromRow)).toList();
   }
 
   /// Multiple moods per day allowed — each save is a new timestamped log.
@@ -75,10 +88,11 @@ class Repo {
     required List<String> tags,
     required String loggedOn,
     required String loggedAt,
+    String? id, // see addTransaction
   }) async {
     final row = await _db
         .from('mood_logs')
-        .insert({'mood': mood, 'note': note, 'tags': tags, 'logged_on': loggedOn, 'logged_at': loggedAt})
+        .insert({'mood': mood, 'note': note, 'tags': tags, 'logged_on': loggedOn, 'logged_at': loggedAt, 'id': ?id})
         .select()
         .single();
     return MoodLog.fromRow(row);
@@ -86,7 +100,7 @@ class Repo {
 
   // ---- budgets
   static Future<List<Budget>> listBudgets() async =>
-      (await _db.from('budgets').select()).map(Budget.fromRow).toList();
+      (await _db.from('budgets').select()).map(_keep('budgets', Budget.fromRow)).toList();
 
   static Future<Budget> addBudget({required String? categoryId, required String categoryName, required double amount}) async {
     final row = await _db
@@ -103,7 +117,7 @@ class Repo {
 
   // ---- goals
   static Future<List<Goal>> listGoals() async =>
-      (await _db.from('goals').select().order('created_at', ascending: true)).map(Goal.fromRow).toList();
+      (await _db.from('goals').select().order('created_at', ascending: true)).map(_keep('goals', Goal.fromRow)).toList();
 
   static Future<Goal> addGoal({required String title, required double target, required String? dueOn}) async {
     final row = await _db
@@ -121,18 +135,36 @@ class Repo {
 
   // ---- bills
   static Future<List<Bill>> listBills() async =>
-      (await _db.from('bills').select().order('due_on', ascending: true)).map(Bill.fromRow).toList();
+      (await _db.from('bills').select().order('due_on', ascending: true)).map(_keep('bills', Bill.fromRow)).toList();
 
-  static Future<Bill> addBill({required String name, required double amount, required String dueOn, required String recurrence}) async {
+  static Future<Bill> addBill({
+    required String name,
+    required double amount,
+    required String dueOn,
+    required String recurrence,
+    String? categoryId,
+    String? walletId,
+  }) async {
     final row = await _db
         .from('bills')
-        .insert({'name': name, 'amount': amount, 'due_on': dueOn, 'recurrence': recurrence, 'is_paid': false})
+        // Newer columns only when set, so bills still save before the wallets update.
+        .insert({
+          'name': name,
+          'amount': amount,
+          'due_on': dueOn,
+          'recurrence': recurrence,
+          'is_paid': false,
+          'category_id': ?categoryId,
+          'wallet_id': ?walletId,
+        })
         .select()
         .single();
     return Bill.fromRow(row);
   }
 
   static Future<void> setBillPaid(String id, bool paid) => _db.from('bills').update({'is_paid': paid}).eq('id', id);
+
+  static Future<void> updateBill(String id, Map<String, dynamic> patch) => _db.from('bills').update(patch).eq('id', id);
 
   static Future<void> deleteBill(String id) => _db.from('bills').delete().eq('id', id);
 
@@ -142,7 +174,7 @@ class Repo {
           .select()
           .order('entry_on', ascending: false)
           .order('created_at', ascending: false))
-      .map(JournalEntry.fromRow)
+      .map(_keep('journal_entries', JournalEntry.fromRow))
       .toList();
 
   static Future<JournalEntry> addJournal({required String entryOn, required int? mood, required String title, required String body}) async {
@@ -158,7 +190,7 @@ class Repo {
 
   // ---- activities (custom daily habits) + their logs
   static Future<List<Activity>> listActivities() async =>
-      (await _db.from('activities').select().order('sort', ascending: true)).map(Activity.fromRow).toList();
+      (await _db.from('activities').select().order('sort', ascending: true)).map(_keep('activities', Activity.fromRow)).toList();
 
   static Future<Activity> addActivity({required String name, required String color, required int sort}) async {
     final row = await _db.from('activities').insert({'name': name, 'color': color, 'sort': sort}).select().single();
@@ -168,7 +200,7 @@ class Repo {
   static Future<void> deleteActivity(String id) => _db.from('activities').delete().eq('id', id);
 
   static Future<List<ActivityLog>> listActivityLogs() async =>
-      (await _db.from('activity_logs').select()).map(ActivityLog.fromRow).toList();
+      (await _db.from('activity_logs').select()).map(_keep('activity_logs', ActivityLog.fromRow)).toList();
 
   static Future<ActivityLog> addActivityLog(String activityId, String loggedOn) async {
     final row = await _db
@@ -187,7 +219,7 @@ class Repo {
           .select()
           .order('sort', ascending: true)
           .order('created_at', ascending: true))
-      .map(Board.fromRow)
+      .map(_keep('boards', Board.fromRow))
       .toList();
 
   static Future<Board> addBoard({required String name, required BoardKind kind, required int sort}) async =>
@@ -199,7 +231,7 @@ class Repo {
   static Future<void> deleteBoard(String id) => _db.from('boards').delete().eq('id', id);
 
   static Future<List<BoardColumn>> listBoardColumns() async =>
-      (await _db.from('board_columns').select().order('sort', ascending: true)).map(BoardColumn.fromRow).toList();
+      (await _db.from('board_columns').select().order('sort', ascending: true)).map(_keep('board_columns', BoardColumn.fromRow)).toList();
 
   static Future<List<BoardColumn>> addBoardColumns(String boardId, List<(String, int)> columns) async {
     final rows = await _db
@@ -216,7 +248,7 @@ class Repo {
   static Future<void> deleteBoardColumn(String id) => _db.from('board_columns').delete().eq('id', id);
 
   static Future<List<Ticket>> listTickets() async =>
-      (await _db.from('tickets').select().order('sort', ascending: true)).map(Ticket.fromRow).toList();
+      (await _db.from('tickets').select().order('sort', ascending: true)).map(_keep('tickets', Ticket.fromRow)).toList();
 
   static Future<Ticket> addTicket(Map<String, dynamic> row) async =>
       Ticket.fromRow(await _db.from('tickets').insert(row).select().single());
@@ -230,6 +262,122 @@ class Repo {
   static Future<void> deleteTicket(String id) => _db.from('tickets').delete().eq('id', id);
 
   static Future<void> deleteTickets(List<String> ids) => _db.from('tickets').delete().inFilter('id', ids);
+
+  // ---- wallets + transfers (need the database's wallets update)
+  static Future<List<Wallet>> listWallets() async => (await _db
+          .from('wallets')
+          .select()
+          .order('sort', ascending: true)
+          .order('created_at', ascending: true))
+      .map(_keep('wallets', Wallet.fromRow))
+      .toList();
+
+  static Future<Wallet> addWallet({
+    required String name,
+    required WalletKind kind,
+    required String color,
+    required double openingBalance,
+    required int sort,
+  }) async =>
+      Wallet.fromRow(await _db
+          .from('wallets')
+          .insert({'name': name, 'kind': kind.name, 'color': color, 'opening_balance': openingBalance, 'sort': sort})
+          .select()
+          .single());
+
+  /// Cash, bKash, Nagad and Bank, for an account that has no wallets yet.
+  static Future<List<Wallet>> seedDefaultWallets() async {
+    final rows = await _db
+        .from('wallets')
+        .insert([for (final (i, w) in defaultWallets.indexed) {'name': w.$1, 'kind': w.$2.name, 'color': w.$3, 'sort': i}])
+        .select();
+    return rows.map(Wallet.fromRow).toList()..sort((a, b) => a.sort.compareTo(b.sort));
+  }
+
+  static Future<void> updateWallet(String id, Map<String, dynamic> patch) => _db.from('wallets').update(patch).eq('id', id);
+
+  /// Its entries move to the default wallet; its transfers go with it.
+  static Future<void> deleteWallet(String id) => _db.from('wallets').delete().eq('id', id);
+
+  static Future<List<Transfer>> listTransfers() async => (await _db
+          .from('transfers')
+          .select()
+          .order('occurred_on', ascending: false)
+          .order('created_at', ascending: false))
+      .map(_keep('transfers', Transfer.fromRow))
+      .toList();
+
+  static Future<Transfer> addTransfer({
+    required String fromWallet,
+    required String toWallet,
+    required double amount,
+    required String note,
+    required String occurredOn,
+    required String occurredAt,
+  }) async =>
+      Transfer.fromRow(await _db
+          .from('transfers')
+          .insert({
+            'from_wallet': fromWallet,
+            'to_wallet': toWallet,
+            'amount': amount,
+            'note': note,
+            'occurred_on': occurredOn,
+            'occurred_at': occurredAt,
+          })
+          .select()
+          .single());
+
+  static Future<void> deleteTransfer(String id) => _db.from('transfers').delete().eq('id', id);
+
+  // ---- dhar / baki
+  static Future<List<Debt>> listDebts() async =>
+      (await _db.from('debts').select().order('created_at', ascending: false)).map(_keep('debts', Debt.fromRow)).toList();
+
+  static Future<Debt> addDebt({
+    required String person,
+    required DebtDirection direction,
+    required double amount,
+    required String note,
+    required String? walletId,
+    required String occurredOn,
+    required String? dueOn,
+  }) async =>
+      Debt.fromRow(await _db
+          .from('debts')
+          .insert({
+            'person': person,
+            'direction': direction.name,
+            'amount': amount,
+            'note': note,
+            'wallet_id': walletId,
+            'occurred_on': occurredOn,
+            'due_on': dueOn,
+          })
+          .select()
+          .single());
+
+  static Future<void> updateDebt(String id, Map<String, dynamic> patch) => _db.from('debts').update(patch).eq('id', id);
+
+  /// Its payments go with it.
+  static Future<void> deleteDebt(String id) => _db.from('debts').delete().eq('id', id);
+
+  static Future<List<DebtPayment>> listDebtPayments() async =>
+      (await _db.from('debt_payments').select().order('paid_on', ascending: true)).map(_keep('debt_payments', DebtPayment.fromRow)).toList();
+
+  static Future<DebtPayment> addDebtPayment({
+    required String debtId,
+    required double amount,
+    required String? walletId,
+    required String paidOn,
+  }) async =>
+      DebtPayment.fromRow(await _db
+          .from('debt_payments')
+          .insert({'debt_id': debtId, 'amount': amount, 'wallet_id': walletId, 'paid_on': paidOn})
+          .select()
+          .single());
+
+  static Future<void> deleteDebtPayment(String id) => _db.from('debt_payments').delete().eq('id', id);
 
   // ---- UI preferences (auth user metadata — shared with the web app)
   static Future<Map<String, dynamic>> loadPrefs() async {

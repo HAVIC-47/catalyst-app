@@ -18,6 +18,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../widgets/scan_ui.dart';
 import '../widgets/ui.dart';
 import 'boards_screen.dart';
@@ -112,7 +113,7 @@ class _ListScanSheetState extends State<ListScanSheet> {
   Future<void> _read(Uint8List bytes) async {
     final mime = imageMime(bytes);
     if (mime == null) {
-      _fail('Couldn\'t open that image — use a JPEG or PNG screenshot.');
+      _fail(tr('Couldn\'t open that image — use a JPEG or PNG screenshot.'));
       return;
     }
     final run = ++_run;
@@ -133,7 +134,7 @@ class _ListScanSheetState extends State<ListScanSheet> {
         if (list is Map)
           for (final i in (list['items'] as List? ?? const []).whereType<Map>()) ListItem.fromJson(i),
       ].where((i) => i.title.isNotEmpty).toList();
-      if (items.isEmpty) throw const ScanError('Couldn\'t find any items in this screenshot — try a sharper one.');
+      if (items.isEmpty) throw ScanError(tr('Couldn\'t find any items in this screenshot — try a sharper one.'));
       if (!mounted || run != _run) return;
       await _addAll(items);
     } on ScanError catch (e) {
@@ -141,7 +142,7 @@ class _ListScanSheetState extends State<ListScanSheet> {
     } on PostgrestException catch (e) {
       if (run == _run) _fail(boardError(e));
     } catch (_) {
-      if (run == _run) _fail('No connection — try again.');
+      if (run == _run) _fail(tr('No connection — try again.'));
     }
   }
 
@@ -155,7 +156,7 @@ class _ListScanSheetState extends State<ListScanSheet> {
       app.selectBoard(widget.kind, board.id);
     }
     final cols = app.columnsOf(board.id);
-    if (cols.isEmpty) throw ScanError('Add a column to "${board.name}" first.');
+    if (cols.isEmpty) throw ScanError(tr('Add a column to "{name}" first.', {'name': board.name}));
     final first = cols.first.id;
     final last = cols.length > 1 ? cols.last.id : first;
     final tickets = await app.createTickets(board.id, [
@@ -188,7 +189,7 @@ class _ListScanSheetState extends State<ListScanSheet> {
       await context.read<AppState>().removeTickets([for (final t in added.tickets) t.id]);
       if (mounted) setState(() => _undone = true);
     } catch (e) {
-      if (mounted) setState(() => _error = e is PostgrestException ? boardError(e) : 'Couldn\'t undo — check your connection.');
+      if (mounted) setState(() => _error = e is PostgrestException ? boardError(e) : tr('Couldn\'t undo — check your connection.'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -199,11 +200,11 @@ class _ListScanSheetState extends State<ListScanSheet> {
     final p = Palette.of(context);
     final body = switch (_step) {
       _Step.pick => _pickView(p),
-      _Step.reading => ScanReading(photo: _photo, text: 'Reading the list…'),
+      _Step.reading => ScanReading(photo: _photo, text: tr('Reading the list…')),
       _Step.done => _doneView(p, _added!),
       _Step.error => ScanFailed(photo: _photo, message: _error, onRetry: _reset),
     };
-    return ScanSheet(label: _copy.kicker, title: 'Scan a list', body: body);
+    return ScanSheet(label: _copy.kicker, title: tr('Scan a list'), body: body);
   }
 
   Widget _pickView(Palette p) {
@@ -217,21 +218,27 @@ class _ListScanSheetState extends State<ListScanSheet> {
           Text.rich(
             TextSpan(children: [
               TextSpan(
-                text: 'Upload a screenshot of your ${shopping ? 'shopping list' : 'to-do list'} — from any notes app, Notepad, '
-                    'a chat, or a photo of a handwritten list. Every item goes straight onto ',
+                text: shopping
+                    ? tr('Upload a screenshot of your shopping list — from any notes app, Notepad, a chat, or a photo of a '
+                        'handwritten list. Every item goes straight onto ')
+                    : tr('Upload a screenshot of your to-do list — from any notes app, Notepad, a chat, or a photo of a '
+                        'handwritten list. Every item goes straight onto '),
               ),
               TextSpan(text: target?.name ?? _copy.suggested, style: TextStyle(fontWeight: FontWeight.w600, color: p.ink)),
-              TextSpan(text: '${target == null ? ' (a new ${_copy.board})' : ''}; ticked items go in as ${shopping ? 'bought' : 'done'}.'),
+              TextSpan(
+                text: (target == null ? tr(' (a new {board})', {'board': _copy.board}) : '') +
+                    (shopping ? tr('; ticked items go in as bought.') : tr('; ticked items go in as done.')),
+              ),
             ]),
             style: bodyStyle(p, 14, color: p.muted(0.6), height: 1.5),
           ),
           const SizedBox(height: 18),
           Row(children: [
             Expanded(
-              child: ScanChoice(icon: LucideIcons.imageUp, label: 'Upload screenshot', primary: true, onTap: () => _pick(ImageSource.gallery)),
+              child: ScanChoice(icon: LucideIcons.imageUp, label: tr('Upload screenshot'), primary: true, onTap: () => _pick(ImageSource.gallery)),
             ),
             const SizedBox(width: 12),
-            Expanded(child: ScanChoice(icon: LucideIcons.camera, label: 'Take photo', primary: false, onTap: () => _pick(ImageSource.camera))),
+            Expanded(child: ScanChoice(icon: LucideIcons.camera, label: tr('Take photo'), primary: false, onTap: () => _pick(ImageSource.camera))),
           ]),
         ],
       ),
@@ -252,7 +259,7 @@ class _ListScanSheetState extends State<ListScanSheet> {
           Semantics(
             liveRegion: true,
             child: Text(
-              _undone ? 'Taken back off the board' : 'Added $n ${ticketNoun(widget.kind, n)}',
+              _undone ? tr('Taken back off the board') : tr('Added {n} {x1}', {'n': n, 'x1': ticketNoun(widget.kind, n)}),
               textAlign: TextAlign.center,
               style: displayStyle(p, 24, weight: FontWeight.w600),
             ),
@@ -260,7 +267,7 @@ class _ListScanSheetState extends State<ListScanSheet> {
           const SizedBox(height: 4),
           Text.rich(
             TextSpan(children: [
-              TextSpan(text: _undone ? 'Nothing was kept on ${added.board}.' : 'to ${added.board}'),
+              TextSpan(text: _undone ? tr('Nothing was kept on {board}.', {'board': added.board}) : tr('to {board}', {'board': added.board})),
               if (!_undone && total > 0) TextSpan(text: ' · ${formatCurrency(total)}', style: monoStyle(p, 13, color: p.muted(0.6))),
             ]),
             textAlign: TextAlign.center,
@@ -301,7 +308,7 @@ class _ListScanSheetState extends State<ListScanSheet> {
                       ],
                       if (done) ...[
                         const SizedBox(width: 8),
-                        Label(shopping ? 'bought' : 'done'),
+                        Label(shopping ? tr('bought') : tr('done')),
                       ],
                     ]),
                   );
@@ -331,7 +338,7 @@ class _ListScanSheetState extends State<ListScanSheet> {
                           ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.6, color: p.muted(0.7)))
                           : Icon(LucideIcons.undo2, size: 16, color: p.muted(0.75)),
                       const SizedBox(width: 8),
-                      Text('Undo', style: bodyStyle(p, 14, color: p.muted(0.8))),
+                      Text(tr('Undo'), style: bodyStyle(p, 14, color: p.muted(0.8))),
                     ]),
                   ),
                 ]),
@@ -339,10 +346,10 @@ class _ListScanSheetState extends State<ListScanSheet> {
                 HairlineButton(
                   height: 44,
                   onPressed: _busy ? null : _reset,
-                  child: Text('Scan another', style: bodyStyle(p, 14, color: p.muted(0.85))),
+                  child: Text(tr('Scan another'), style: bodyStyle(p, 14, color: p.muted(0.85))),
                 ),
                 const SizedBox(width: 10),
-                PrimaryButton(label: 'Done', height: 44, onPressed: () => Navigator.pop(context)),
+                PrimaryButton(label: tr('Done'), height: 44, onPressed: () => Navigator.pop(context)),
               ]),
             ],
           ),

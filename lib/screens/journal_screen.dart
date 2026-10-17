@@ -10,6 +10,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../util/limits.dart';
 import '../widgets/ai_insights.dart';
 import '../widgets/mood_face.dart';
@@ -87,23 +88,23 @@ class _JournalScreenState extends State<JournalScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          PageHeader(kicker: 'Journal · ${fmt(DateTime.now(), 'EEEE, MMM d')}', title: 'Daily', accent: 'log.'),
+          PageHeader(kicker: '${tr('Journal')} · ${fmt(DateTime.now(), 'EEEE, MMM d')}', title: tr('Daily'), accent: tr('log.')),
           const AiInsightsCard(topics: [InsightTopic.journal, InsightTopic.mood]),
           CardBox(
             margin: const EdgeInsets.only(bottom: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Label('New entry · today'),
+                Label(tr('New entry · today')),
                 const SizedBox(height: 10),
-                TextField(controller: _title, inputFormatters: maxChars(Limits.title), decoration: const InputDecoration(hintText: 'Title')),
+                TextField(controller: _title, inputFormatters: maxChars(Limits.title), decoration: InputDecoration(hintText: tr('Title'))),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _body,
                   inputFormatters: maxChars(Limits.body),
                   minLines: 4,
                   maxLines: 8,
-                  decoration: const InputDecoration(hintText: 'How did the day go? What happened?'),
+                  decoration: InputDecoration(hintText: tr('How did the day go? What happened?')),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -135,14 +136,14 @@ class _JournalScreenState extends State<JournalScreen> {
                         ),
                       ),
                     const SizedBox(width: 6),
-                    PrimaryButton(label: 'Save entry', height: 42, busy: _busy, onPressed: canSave ? save : null),
+                    PrimaryButton(label: tr('Save entry'), height: 42, busy: _busy, onPressed: canSave ? save : null),
                   ],
                 ),
               ],
             ),
           ),
           if (!app.loading && app.journal.isEmpty)
-            const Padding(padding: EdgeInsets.only(bottom: 16), child: EmptyCard('No journal entries yet. Write your first above.')),
+            Padding(padding: EdgeInsets.only(bottom: 16), child: EmptyCard(tr('No journal entries yet. Write your first above.'))),
           for (final j in app.journal)
             CardBox(
               margin: const EdgeInsets.only(bottom: 10),
@@ -151,12 +152,12 @@ class _JournalScreenState extends State<JournalScreen> {
                 children: [
                   Row(children: [
                     if (j.mood != null) ...[MoodFace(j.mood!, size: 20), const SizedBox(width: 8)],
-                    Expanded(child: Text(j.title.isEmpty ? 'Untitled' : j.title, style: displayStyle(p, 18))),
+                    Expanded(child: Text(j.title.isEmpty ? tr('Untitled') : j.title, style: displayStyle(p, 18))),
                     Text(fmt(fromDateKey(j.entryOn), 'MMM d, yyyy'), style: monoStyle(p, 11, color: p.muted(0.35))),
                     TrashButton(
-                      tooltip: 'Delete entry',
+                      tooltip: tr('Delete entry'),
                       onPressed: () async {
-                        if (!await confirm(context, 'Delete this entry?')) return;
+                        if (!await confirm(context, tr('Delete this entry?'))) return;
                         try {
                           await app.removeJournal(j.id);
                         } catch (e) {
@@ -175,11 +176,11 @@ class _JournalScreenState extends State<JournalScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Label("Today's activities"),
+                Label(tr("Today's activities")),
                 const SizedBox(height: 6),
-                Text('Track custom daily-life habits. Tap to mark done for today.', style: bodyStyle(p, 12, color: p.muted(0.4))),
+                Text(tr('Track custom daily-life habits. Tap to mark done for today.'), style: bodyStyle(p, 12, color: p.muted(0.4))),
                 const SizedBox(height: 12),
-                if (app.activities.isEmpty) Text('No activities yet. Add one below.', style: bodyStyle(p, 12, color: p.muted(0.3))),
+                if (app.activities.isEmpty) Text(tr('No activities yet. Add one below.'), style: bodyStyle(p, 12, color: p.muted(0.3))),
                 for (final a in app.activities)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
@@ -221,10 +222,10 @@ class _JournalScreenState extends State<JournalScreen> {
                         ),
                       ),
                       IconButton(
-                        tooltip: 'Remove ${a.name}',
+                        tooltip: tr('Remove {name}', {'name': a.name}),
                         visualDensity: VisualDensity.compact,
                         onPressed: () async {
-                          if (!await confirm(context, 'Remove "${a.name}"?', action: 'Remove')) return;
+                          if (!await confirm(context, tr('Remove "{name}"?', {'name': a.name}), action: tr('Remove'))) return;
                           try {
                             await app.removeActivity(a.id);
                           } catch (e) {
@@ -244,13 +245,13 @@ class _JournalScreenState extends State<JournalScreen> {
                       controller: _act,
                       inputFormatters: maxChars(Limits.name),
                       onSubmitted: (_) => addActivity(),
-                      decoration: const InputDecoration(hintText: 'e.g. Workout, Read, Sleep 8h'),
+                      decoration: InputDecoration(hintText: tr('e.g. Workout, Read, Sleep 8h')),
                     ),
                   ),
                   const SizedBox(width: 8),
                   SizedBox(
                     width: 46,
-                    child: PrimaryButton(label: '', semanticLabel: 'Add activity', icon: LucideIcons.plus, height: 46, onPressed: _act.text.trim().isEmpty ? null : addActivity),
+                    child: PrimaryButton(label: '', semanticLabel: tr('Add activity'), icon: LucideIcons.plus, height: 46, onPressed: _act.text.trim().isEmpty ? null : addActivity),
                   ),
                 ]),
               ],

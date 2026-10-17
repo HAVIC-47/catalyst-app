@@ -2,6 +2,8 @@
 // read and write the same Supabase tables, so field names and rules match.
 import 'package:flutter/painting.dart';
 
+import 'util/i18n.dart';
+
 enum Kind { expense, income, saving }
 
 Kind kindFrom(String? s) => switch (s) {
@@ -54,6 +56,7 @@ class Txn {
     required this.occurredOn,
     required this.occurredAt,
     required this.createdAt,
+    this.walletId,
   });
 
   final String id;
@@ -66,6 +69,7 @@ class Txn {
   final String occurredOn; // yyyy-mm-dd (date bucket)
   final String occurredAt; // ISO timestamp (intraday)
   final String createdAt;
+  final String? walletId; // null = the default wallet
 
   factory Txn.fromRow(Map<String, dynamic> r) => Txn(
         id: r['id'] as String,
@@ -78,7 +82,13 @@ class Txn {
         occurredOn: r['occurred_on'] as String,
         occurredAt: (r['occurred_at'] ?? r['created_at']) as String,
         createdAt: (r['created_at'] as String?) ?? '',
+        walletId: r['wallet_id'] as String?,
       );
+
+  /// The same entry in another wallet (null = the default one).
+  Txn withWallet(String? wallet) => Txn(
+      id: id, kind: kind, amount: amount, categoryId: categoryId, categoryName: categoryName, place: place,
+      note: note, occurredOn: occurredOn, occurredAt: occurredAt, createdAt: createdAt, walletId: wallet);
 }
 
 /// The ledger's order (same as the database list): newest day first, then newest
@@ -98,6 +108,7 @@ class NewTxn {
     this.note = '',
     required this.occurredOn,
     required this.occurredAt,
+    this.walletId,
   });
 
   final Kind kind;
@@ -108,7 +119,10 @@ class NewTxn {
   final String note;
   final String occurredOn;
   final String occurredAt;
+  final String? walletId;
 
+  // wallet_id only goes out when there is one, so entries still save on a database
+  // that hasn't had the wallets update yet.
   Map<String, dynamic> toRow() => {
         'kind': kind.name,
         'amount': amount,
@@ -118,6 +132,7 @@ class NewTxn {
         'note': note,
         'occurred_on': occurredOn,
         'occurred_at': occurredAt,
+        'wallet_id': ?walletId,
       };
 }
 
@@ -194,7 +209,17 @@ class Goal {
 }
 
 class Bill {
-  const Bill({required this.id, required this.name, required this.amount, required this.dueOn, required this.recurrence, required this.isPaid});
+  const Bill({
+    required this.id,
+    required this.name,
+    required this.amount,
+    required this.dueOn,
+    required this.recurrence,
+    required this.isPaid,
+    this.categoryId,
+    this.walletId,
+    this.lastPaidTxn,
+  });
 
   final String id;
   final String name;
@@ -202,6 +227,9 @@ class Bill {
   final String dueOn;
   final String recurrence; // monthly | weekly | yearly | once
   final bool isPaid;
+  final String? categoryId; // what paying it is logged under (null = matched by name)
+  final String? walletId; // paid from (null = the default wallet)
+  final String? lastPaidTxn; // the expense its last payment logged
 
   factory Bill.fromRow(Map<String, dynamic> r) => Bill(
         id: r['id'] as String,
@@ -210,10 +238,36 @@ class Bill {
         dueOn: r['due_on'] as String,
         recurrence: (r['recurrence'] as String?) ?? 'monthly',
         isPaid: (r['is_paid'] as bool?) ?? false,
+        categoryId: r['category_id'] as String?,
+        walletId: r['wallet_id'] as String?,
+        lastPaidTxn: r['last_paid_txn'] as String?,
       );
 
-  Bill copyWith({bool? isPaid}) =>
-      Bill(id: id, name: name, amount: amount, dueOn: dueOn, recurrence: recurrence, isPaid: isPaid ?? this.isPaid);
+  /// A copy with some fields changed; pass `clearX: true` to set a link to null.
+  Bill copyWith({
+    String? name,
+    double? amount,
+    String? dueOn,
+    String? recurrence,
+    bool? isPaid,
+    String? categoryId,
+    String? walletId,
+    String? lastPaidTxn,
+    bool clearCategory = false,
+    bool clearWallet = false,
+    bool clearLastPaid = false,
+  }) =>
+      Bill(
+        id: id,
+        name: name ?? this.name,
+        amount: amount ?? this.amount,
+        dueOn: dueOn ?? this.dueOn,
+        recurrence: recurrence ?? this.recurrence,
+        isPaid: isPaid ?? this.isPaid,
+        categoryId: clearCategory ? null : categoryId ?? this.categoryId,
+        walletId: clearWallet ? null : walletId ?? this.walletId,
+        lastPaidTxn: clearLastPaid ? null : lastPaidTxn ?? this.lastPaidTxn,
+      );
 }
 
 class JournalEntry {
@@ -265,6 +319,181 @@ class ActivityLog {
         activityId: r['activity_id'] as String,
         loggedOn: r['logged_on'] as String,
         value: (r['value'] as String?) ?? 'done',
+      );
+}
+
+// ---- wallets: where money sits (cash, bKash, Nagad, a bank account…)
+
+enum WalletKind { cash, mobile, bank, card, other }
+
+WalletKind walletKindFrom(String? s) => WalletKind.values.firstWhere((k) => k.name == s, orElse: () => WalletKind.other);
+
+const walletKindLabels = {
+  WalletKind.cash: 'Cash',
+  WalletKind.mobile: 'Mobile money',
+  WalletKind.bank: 'Bank',
+  WalletKind.card: 'Card',
+  WalletKind.other: 'Other',
+};
+
+class Wallet {
+  const Wallet({
+    required this.id,
+    required this.name,
+    required this.kind,
+    required this.color,
+    required this.openingBalance,
+    required this.sort,
+    required this.archived,
+  });
+
+  final String id;
+  final String name;
+  final WalletKind kind;
+  final String color;
+  final double openingBalance;
+  final int sort;
+  final bool archived;
+
+  factory Wallet.fromRow(Map<String, dynamic> r) => Wallet(
+        id: r['id'] as String,
+        name: (r['name'] as String?) ?? '',
+        kind: walletKindFrom(r['kind'] as String?),
+        color: (r['color'] as String?) ?? '#7A746A',
+        openingBalance: _num(r['opening_balance']),
+        sort: (r['sort'] as num?)?.toInt() ?? 0,
+        archived: (r['archived'] as bool?) ?? false,
+      );
+
+  Wallet copyWith({String? name, WalletKind? kind, String? color, double? openingBalance, int? sort, bool? archived}) => Wallet(
+        id: id,
+        name: name ?? this.name,
+        kind: kind ?? this.kind,
+        color: color ?? this.color,
+        openingBalance: openingBalance ?? this.openingBalance,
+        sort: sort ?? this.sort,
+        archived: archived ?? this.archived,
+      );
+}
+
+/// Wallets a new account starts with (renamable, more can be added, any can be archived).
+const defaultWallets = [
+  ('Cash', WalletKind.cash, '#2E8159'),
+  ('bKash', WalletKind.mobile, '#E2136E'),
+  ('Nagad', WalletKind.mobile, '#F26522'),
+  ('Bank', WalletKind.bank, '#3D80BC'),
+];
+
+/// Money moved between two wallets — never spending or income.
+class Transfer {
+  const Transfer({
+    required this.id,
+    required this.fromWallet,
+    required this.toWallet,
+    required this.amount,
+    required this.note,
+    required this.occurredOn,
+    required this.occurredAt,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String fromWallet;
+  final String toWallet;
+  final double amount;
+  final String note;
+  final String occurredOn;
+  final String occurredAt;
+  final String createdAt;
+
+  factory Transfer.fromRow(Map<String, dynamic> r) => Transfer(
+        id: r['id'] as String,
+        fromWallet: r['from_wallet'] as String,
+        toWallet: r['to_wallet'] as String,
+        amount: _num(r['amount']),
+        note: (r['note'] as String?) ?? '',
+        occurredOn: r['occurred_on'] as String,
+        occurredAt: (r['occurred_at'] as String?) ?? '',
+        createdAt: (r['created_at'] as String?) ?? '',
+      );
+}
+
+// ---- dhar / baki: money lent (they owe you) or borrowed (you owe them)
+
+enum DebtDirection { lent, borrowed }
+
+class Debt {
+  const Debt({
+    required this.id,
+    required this.person,
+    required this.direction,
+    required this.amount,
+    required this.note,
+    required this.walletId,
+    required this.occurredOn,
+    required this.dueOn,
+    required this.closed,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String person;
+  final DebtDirection direction;
+  final double amount;
+  final String note;
+  final String? walletId; // the money left / came into this wallet
+  final String occurredOn;
+  final String? dueOn;
+  final bool closed; // settled or written off
+  final String createdAt;
+
+  bool get lent => direction == DebtDirection.lent;
+
+  factory Debt.fromRow(Map<String, dynamic> r) => Debt(
+        id: r['id'] as String,
+        person: (r['person'] as String?) ?? '',
+        direction: r['direction'] == 'borrowed' ? DebtDirection.borrowed : DebtDirection.lent,
+        amount: _num(r['amount']),
+        note: (r['note'] as String?) ?? '',
+        walletId: r['wallet_id'] as String?,
+        occurredOn: r['occurred_on'] as String,
+        dueOn: r['due_on'] as String?,
+        closed: (r['closed'] as bool?) ?? false,
+        createdAt: (r['created_at'] as String?) ?? '',
+      );
+
+  Debt copyWith({bool? closed}) => Debt(
+      id: id, person: person, direction: direction, amount: amount, note: note, walletId: walletId,
+      occurredOn: occurredOn, dueOn: dueOn, closed: closed ?? this.closed, createdAt: createdAt);
+}
+
+class DebtPayment {
+  const DebtPayment({
+    required this.id,
+    required this.debtId,
+    required this.amount,
+    required this.walletId,
+    required this.paidOn,
+    required this.note,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String debtId;
+  final double amount;
+  final String? walletId;
+  final String paidOn;
+  final String note;
+  final String createdAt;
+
+  factory DebtPayment.fromRow(Map<String, dynamic> r) => DebtPayment(
+        id: r['id'] as String,
+        debtId: r['debt_id'] as String,
+        amount: _num(r['amount']),
+        walletId: r['wallet_id'] as String?,
+        paidOn: r['paid_on'] as String,
+        note: (r['note'] as String?) ?? '',
+        createdAt: (r['created_at'] as String?) ?? '',
       );
 }
 
@@ -425,11 +654,14 @@ int byTicketOrder(Ticket a, Ticket b) {
 
 /// 5 moods (1 = lowest .. 5 = highest), earthy brick -> forest green.
 class MoodPreset {
-  const MoodPreset(this.value, this.label, this.hex);
+  const MoodPreset(this.value, this.name, this.hex);
 
   final int value;
-  final String label;
+  final String name; // English, as the web shows it
   final String hex;
+
+  /// In the app's language.
+  String get label => tr('$name|mood');
   Color get color => hexColor(hex);
 }
 
@@ -472,6 +704,8 @@ const defaultIncomeCategories = [
 const dashboardSections = [
   ('kpis', 'Monthly summary', 'Spent · Earned · Saved · Avg mood'),
   ('trend', 'Mood × money trend', 'Net flow vs mood over time'),
+  ('recap', 'Monthly recap', 'AI look back at the month, with what to change'),
+  ('wallets', 'Wallets', "What's in cash, bKash, Nagad, the bank"),
   ('insights', 'AI insights', 'Mood · money · savings, with suggestions'),
   ('spent', 'Spent by category', 'Where the money went'),
   ('earned', 'Earned by category', 'Where the money came from'),

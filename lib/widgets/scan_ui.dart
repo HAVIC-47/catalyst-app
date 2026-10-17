@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
+import '../util/i18n.dart';
 import 'ui.dart';
 
 /// A scanner's sheet: grab handle, label and title, close, then [body]. [tall]
@@ -53,7 +54,7 @@ class ScanSheet extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Close',
+                      tooltip: tr('Close'),
                       onPressed: () => Navigator.pop(context),
                       icon: Icon(LucideIcons.x, color: p.muted(0.4)),
                     ),
@@ -153,7 +154,7 @@ class ScanReading extends StatelessWidget {
             Text(text, style: bodyStyle(p, 14, color: p.muted(0.75))),
           ]),
           const SizedBox(height: 6),
-          Text('Usually a few seconds.', style: bodyStyle(p, 12, color: p.muted(0.5))),
+          Text(tr('Usually a few seconds.'), style: bodyStyle(p, 12, color: p.muted(0.5))),
         ],
       ),
     );
@@ -189,7 +190,7 @@ class ScanFailed extends StatelessWidget {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(LucideIcons.rotateCcw, size: 16, color: p.muted(0.8)),
               const SizedBox(width: 8),
-              Text('Try again', style: bodyStyle(p, 14, color: p.muted(0.85))),
+              Text(tr('Try again'), style: bodyStyle(p, 14, color: p.muted(0.85))),
             ]),
           ),
         ],

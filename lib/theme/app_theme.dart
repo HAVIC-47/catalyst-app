@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../util/i18n.dart';
 import 'palette.dart';
 
 /// Editorial type system (same families as the web): Newsreader for display,
@@ -12,12 +13,16 @@ class Fonts {
 
 const _tabular = [FontFeature.tabularFigures()];
 
+// Bangla text falls back to the phone's Bengali font: it needs a taller line (the
+// vowel signs sit above and below), no tightened or widened tracking, and no
+// slanted "italic" — a synthesized slant reads badly in Bengali script.
+
 TextStyle displayStyle(Palette p, double size, {FontWeight weight = FontWeight.w600, Color? color}) => TextStyle(
       fontFamily: Fonts.display,
       fontSize: size,
       fontWeight: weight,
-      height: 1.05,
-      letterSpacing: -0.025 * size,
+      height: isBangla ? 1.3 : 1.05,
+      letterSpacing: isBangla ? 0 : -0.025 * size,
       color: color ?? p.ink,
     );
 
@@ -25,7 +30,7 @@ TextStyle displayStyle(Palette p, double size, {FontWeight weight = FontWeight.w
 TextStyle accentItalic(Palette p, double size, {double alpha = 0.9}) => TextStyle(
       fontFamily: Fonts.display,
       fontSize: size,
-      fontStyle: FontStyle.italic,
+      fontStyle: isBangla ? FontStyle.normal : FontStyle.italic,
       fontWeight: FontWeight.w500,
       color: p.accent.withValues(alpha: alpha),
     );
@@ -36,7 +41,7 @@ TextStyle monoStyle(Palette p, double size, {Color? color, FontWeight weight = F
       fontSize: size,
       fontWeight: weight,
       fontFeatures: _tabular,
-      letterSpacing: letterSpacing,
+      letterSpacing: isBangla ? null : letterSpacing,
       color: color ?? p.ink,
     );
 

@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
+import '../util/i18n.dart';
 
 class ScanError implements Exception {
   const ScanError(this.message);
@@ -47,7 +48,7 @@ Future<Uint8List?> _pick(ImageSource source) async {
     // The readers only need ~1600px; this keeps the upload small.
     file = await _picker.pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
   } on PlatformException {
-    throw ScanError(source == ImageSource.camera ? 'Couldn\'t open the camera — choose a photo instead.' : 'Couldn\'t open your photos.');
+    throw ScanError(source == ImageSource.camera ? tr('Couldn\'t open the camera — choose a photo instead.') : tr('Couldn\'t open your photos.'));
   }
   return file?.readAsBytes();
 }
@@ -56,7 +57,7 @@ Future<Map<String, dynamic>> _send(String path, Map<String, dynamic> body) async
   final auth = Supabase.instance.client.auth;
   var session = auth.currentSession;
   if (session != null && session.isExpired) session = (await auth.refreshSession()).session;
-  if (session == null) throw const ScanError('Log in again to scan photos.');
+  if (session == null) throw ScanError(tr('Log in again to scan photos.'));
 
   final http.Response res;
   try {
@@ -68,7 +69,7 @@ Future<Map<String, dynamic>> _send(String path, Map<String, dynamic> body) async
         )
         .timeout(const Duration(seconds: 75));
   } on TimeoutException {
-    throw const ScanError('The reader took too long — try again.');
+    throw ScanError(tr('The reader took too long — try again.'));
   }
   Map<String, dynamic>? data;
   try {
@@ -77,7 +78,7 @@ Future<Map<String, dynamic>> _send(String path, Map<String, dynamic> body) async
     data = null;
   }
   if (res.statusCode != 200 || data == null) {
-    throw ScanError(data?['error'] as String? ?? 'The reader couldn\'t process this photo.');
+    throw ScanError(data?['error'] as String? ?? tr('The reader couldn\'t process this photo.'));
   }
   return data;
 }

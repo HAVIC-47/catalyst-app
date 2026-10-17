@@ -12,9 +12,12 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../util/limits.dart';
+import '../util/money.dart';
 import '../widgets/mood_face.dart';
 import '../widgets/ui.dart';
+import '../widgets/wallet_picker.dart';
 
 enum EntryTab { money, mood, saving }
 
@@ -92,7 +95,7 @@ class _EntrySheetState extends State<EntrySheet> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Close',
+                      tooltip: tr('Close'),
                       onPressed: () => Navigator.pop(context),
                       icon: Icon(LucideIcons.x, color: p.muted(0.4)),
                     ),
@@ -113,7 +116,7 @@ class _EntrySheetState extends State<EntrySheet> {
                             border: Border(bottom: BorderSide(color: _tab == t ? p.accent : Colors.transparent, width: 2)),
                           ),
                           child: Text(
-                            '${t.name[0].toUpperCase()}${t.name.substring(1)}',
+                            tr('${t.name[0].toUpperCase()}${t.name.substring(1)}'),
                             style: bodyStyle(p, 14.5, weight: FontWeight.w500, color: _tab == t ? p.ink : p.muted(0.4)),
                           ),
                         ),
@@ -152,7 +155,7 @@ class _TimeField extends StatelessWidget {
     final parts = value.split(':');
     final t = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
     return FieldBlock(
-      label: 'Time',
+      label: tr('Time'),
       child: Align(
         alignment: Alignment.centerLeft,
         child: IntrinsicWidth(
@@ -183,7 +186,7 @@ class _TimeField extends StatelessWidget {
 String _friendly(Object e) {
   final msg = e.toString();
   if (msg.toLowerCase().contains('column') || msg.contains('PGRST')) {
-    return 'Database missing a column — run the migration in db/supabase.sql, then retry.';
+    return tr('Database missing a column — run the migration in db/supabase.sql, then retry.');
   }
   return msg.replaceFirst('Exception: ', '');
 }
@@ -214,6 +217,7 @@ class _MoneyFields {
   final place = TextEditingController();
   final note = TextEditingController();
   String? categoryId;
+  String? walletId; // null = the one used last
   String time = nowTime();
 
   void dispose() {
@@ -270,6 +274,7 @@ class _MoneyFormState extends State<_MoneyForm> {
       note: f.note.text.trim(),
       occurredOn: widget.dateKey,
       occurredAt: combineDateTime(widget.dateKey, f.time),
+      walletId: app.walletsReady ? f.walletId ?? startWallet(app.wallets) : null,
     );
   }
 
@@ -291,6 +296,7 @@ class _MoneyFormState extends State<_MoneyForm> {
       try {
         for (final e in pending) {
           await app.addMoney(e);
+          rememberWallet(e.walletId);
         }
         if (context.mounted) Navigator.pop(context);
       } catch (e) {
@@ -343,16 +349,16 @@ class _MoneyFormState extends State<_MoneyForm> {
             color: p.inkA(0.02),
           ),
           child: Row(children: [
-            kindTab(Kind.expense, 'Expense', LucideIcons.arrowUpRight, p.expense),
+            kindTab(Kind.expense, tr('Expense'), LucideIcons.arrowUpRight, p.expense),
             const SizedBox(width: 6),
-            kindTab(Kind.income, 'Income', LucideIcons.arrowDownLeft, p.income),
+            kindTab(Kind.income, tr('Income'), LucideIcons.arrowDownLeft, p.income),
           ]),
         ),
         const SizedBox(height: 22),
-        FieldBlock(label: 'Amount', child: AmountField(controller: f.amount, large: true, semanticLabel: 'Amount')),
+        FieldBlock(label: tr('Amount'), child: AmountField(controller: f.amount, large: true, semanticLabel: tr('Amount'))),
         const SizedBox(height: 22),
         FieldBlock(
-          label: 'Category',
+          label: tr('Category'),
           child: list.isEmpty
               ? Container(
                   padding: const EdgeInsets.all(16),
@@ -360,7 +366,7 @@ class _MoneyFormState extends State<_MoneyForm> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: p.line),
                   ),
-                  child: Text('No ${_kind.name} categories yet. Add them in Settings.',
+                  child: Text(tr('No {name} categories yet. Add them in Settings.', {'name': tr(_kind.name)}),
                       textAlign: TextAlign.center, style: bodyStyle(p, 12, color: p.muted(0.45))),
                 )
               : GridView.count(
@@ -376,29 +382,37 @@ class _MoneyFormState extends State<_MoneyForm> {
                   ],
                 ),
         ),
+        if (app.walletsReady && app.wallets.isNotEmpty) ...[
+          const SizedBox(height: 22),
+          WalletPicker(
+            value: f.walletId ?? startWallet(app.wallets),
+            onChanged: (id) => setState(() => f.walletId = id),
+            label: _kind == Kind.expense ? tr('Paid from') : tr('Received in'),
+          ),
+        ],
         const SizedBox(height: 22),
         _TimeField(value: f.time, onChanged: (v) => setState(() => f.time = v)),
         const SizedBox(height: 22),
         FieldBlock(
-          label: 'Place',
+          label: tr('Place'),
           child: TextField(
             controller: f.place,
             inputFormatters: maxChars(Limits.place),
             decoration: InputDecoration(
-              hintText: 'Star Kabab, Aarong, Pathao…',
+              hintText: tr('Star Kabab, Aarong, Pathao…'),
               prefixIcon: Icon(LucideIcons.mapPin, size: 16, color: p.muted(0.35)),
             ),
           ),
         ),
         const SizedBox(height: 22),
-        FieldBlock(label: 'Note · optional', child: TextField(controller: f.note, inputFormatters: maxChars(Limits.note), decoration: const InputDecoration(hintText: 'What was it for?'))),
+        FieldBlock(label: tr('Note · optional'), child: TextField(controller: f.note, inputFormatters: maxChars(Limits.note), decoration: InputDecoration(hintText: tr('What was it for?')))),
         if (_error != null) ...[const SizedBox(height: 16), _ErrorText(_error!)],
         const SizedBox(height: 22),
         PrimaryButton(
           expand: true,
           height: 50,
           busy: _saving,
-          label: pending.length == 2 ? 'Save expense + income' : pending.length == 1 ? 'Save entry' : 'Save',
+          label: pending.length == 2 ? tr('Save expense + income') : pending.length == 1 ? tr('Save entry') : tr('Save'),
           onPressed: pending.isEmpty ? null : submit,
         ),
       ],
@@ -419,7 +433,7 @@ class _CategoryTile extends StatelessWidget {
     return Semantics(
       button: true,
       selected: active,
-      label: cat.name,
+      label: tr(cat.name),
       child: Material(
         color: active ? p.inkA(0.06) : Colors.transparent,
         shape: RoundedRectangleBorder(
@@ -435,9 +449,9 @@ class _CategoryTile extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CategoryBadge(name: cat.name, color: hexColor(cat.color), size: 32),
+                  CategoryBadge(name: tr(cat.name), color: hexColor(cat.color), size: 32),
                   const SizedBox(height: 7),
-                  Text(cat.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 12, color: p.muted(0.7))),
+                  Text(tr(cat.name), maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 12, color: p.muted(0.7))),
                 ],
               ),
             ),
@@ -504,7 +518,7 @@ class _MoodFormState extends State<_MoodForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Label('How was the day?'),
+        Label(tr('How was the day?')),
         const SizedBox(height: 10),
         Row(
           children: [
@@ -554,7 +568,7 @@ class _MoodFormState extends State<_MoodForm> {
           ],
         ),
         const SizedBox(height: 22),
-        const Label('What was it about? · optional'),
+        Label(tr('What was it about? · optional')),
         const SizedBox(height: 9),
         Wrap(
           spacing: 8,
@@ -562,7 +576,7 @@ class _MoodFormState extends State<_MoodForm> {
           children: [
             for (final t in moodTags)
               OptionChip(
-                label: t,
+                label: tr('$t|tag'),
                 round: true,
                 selected: _tags.contains(t),
                 onTap: () => setState(() => _tags.contains(t) ? _tags.remove(t) : _tags.add(t)),
@@ -573,12 +587,12 @@ class _MoodFormState extends State<_MoodForm> {
         _TimeField(value: _time, onChanged: (v) => setState(() => _time = v)),
         const SizedBox(height: 22),
         FieldBlock(
-          label: 'Note · optional',
-          child: TextField(controller: _note, minLines: 3, maxLines: 5, inputFormatters: maxChars(Limits.note), decoration: const InputDecoration(hintText: 'What shaped the mood right now?')),
+          label: tr('Note · optional'),
+          child: TextField(controller: _note, minLines: 3, maxLines: 5, inputFormatters: maxChars(Limits.note), decoration: InputDecoration(hintText: tr('What shaped the mood right now?'))),
         ),
         if (dayMoods.isNotEmpty) ...[
           const SizedBox(height: 22),
-          Label('Already logged today · ${dayMoods.length}'),
+          Label(tr('Already logged today · {n}', {'n': dayMoods.length})),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -601,11 +615,11 @@ class _MoodFormState extends State<_MoodForm> {
             ],
           ),
           const SizedBox(height: 6),
-          Text('Multiple moods per day are kept — the day shows their average.', style: bodyStyle(p, 11, color: p.muted(0.35))),
+          Text(tr('Multiple moods per day are kept — the day shows their average.'), style: bodyStyle(p, 11, color: p.muted(0.35))),
         ],
         if (_error != null) ...[const SizedBox(height: 16), _ErrorText(_error!)],
         const SizedBox(height: 22),
-        _TintButton(label: 'Save mood', color: active.color, busy: _saving, onPressed: submit),
+        _TintButton(label: tr('Save mood'), color: active.color, busy: _saving, onPressed: submit),
       ],
     );
   }
@@ -712,7 +726,7 @@ class _SavingFormState extends State<_SavingForm> {
       } catch (e) {
         final m = e.toString().toLowerCase();
         setState(() => _error = m.contains('constraint') || m.contains('column') || m.contains('pgrst')
-            ? "Database hasn't been migrated for savings yet — run the latest db/supabase.sql, then retry."
+            ? tr("Database hasn't been migrated for savings yet — run the latest db/supabase.sql, then retry.")
             : _friendly(e));
       } finally {
         if (mounted) setState(() => _saving = false);
@@ -731,21 +745,21 @@ class _SavingFormState extends State<_SavingForm> {
           ),
           child: Column(
             children: [
-              const Label('Total savings'),
+              Label(tr('Total savings')),
               const SizedBox(height: 4),
-              Text('$taka${groupNumber(added - broken)}', style: monoStyle(p, 28, weight: FontWeight.w600, color: p.saving)),
+              Text(formatCurrency(added - broken), style: monoStyle(p, 28, weight: FontWeight.w600, color: p.saving)),
               const SizedBox(height: 6),
-              Text('$taka${groupNumber(added)} added · $taka${groupNumber(broken)} broken',
+              Text(tr('{amount} added · {amount2} broken', {'amount': formatCurrency(added), 'amount2': formatCurrency(broken)}),
                   style: monoStyle(p, 11, color: p.muted(0.4))),
             ],
           ),
         ),
         const SizedBox(height: 22),
-        FieldBlock(label: 'Add to savings', child: AmountField(controller: _amount, large: true)),
+        FieldBlock(label: tr('Add to savings'), child: AmountField(controller: _amount, large: true)),
         const SizedBox(height: 22),
         _TimeField(value: _time, onChanged: (v) => setState(() => _time = v)),
         const SizedBox(height: 22),
-        FieldBlock(label: 'Note · optional', child: TextField(controller: _note, inputFormatters: maxChars(Limits.note), decoration: const InputDecoration(hintText: 'What is this saving for?'))),
+        FieldBlock(label: tr('Note · optional'), child: TextField(controller: _note, inputFormatters: maxChars(Limits.note), decoration: InputDecoration(hintText: tr('What is this saving for?')))),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -756,16 +770,16 @@ class _SavingFormState extends State<_SavingForm> {
           ),
           child: Text.rich(
             TextSpan(children: [
-              const TextSpan(text: 'Tip: pick the '),
+              TextSpan(text: tr('Tip: pick the ')),
               TextSpan(text: breakSaving, style: TextStyle(color: p.saving)),
-              const TextSpan(text: ' category on the Money tab to pull from this pool.'),
+              TextSpan(text: tr(' category on the Money tab to pull from this pool.')),
             ]),
             style: bodyStyle(p, 11.5, color: p.muted(0.45)),
           ),
         ),
         if (_error != null) ...[const SizedBox(height: 16), _ErrorText(_error!)],
         const SizedBox(height: 22),
-        _TintButton(label: 'Save saving', color: p.saving, busy: _saving, onPressed: value == null ? null : submit),
+        _TintButton(label: tr('Save saving'), color: p.saving, busy: _saving, onPressed: value == null ? null : submit),
       ],
     );
   }
@@ -791,6 +805,7 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
   late final _note = TextEditingController(text: widget.txn.note);
   String? _pick; // category id chosen here; null = the entry's own
   late String _date = widget.txn.occurredOn;
+  late String? _wallet = widget.txn.walletId; // null = the default wallet (older entries)
   late final String _savedTime = _hhmm(widget.txn.occurredAt);
   late String _time = _savedTime;
   String? _busy; // 'save' or 'delete'
@@ -840,7 +855,7 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
   }
 
   Future<void> _delete() async {
-    if (_busy != null || !await confirm(context, 'Delete this transaction?')) return;
+    if (_busy != null || !await confirm(context, tr('Delete this transaction?'))) return;
     if (!mounted) return;
     setState(() {
       _busy = 'delete';
@@ -906,6 +921,7 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
             occurredOn: _date,
             // Untouched, the original timestamp stays exactly as it was.
             occurredAt: touchedWhen ? combineDateTime(_date, _time) : t.occurredAt,
+            walletId: app.walletsReady && _kind != Kind.saving ? _wallet : null,
           );
     final changed = next != null &&
         (next.kind != t.kind ||
@@ -915,7 +931,8 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
             next.place != t.place ||
             next.note != t.note ||
             next.occurredOn != t.occurredOn ||
-            next.occurredAt != t.occurredAt);
+            next.occurredAt != t.occurredAt ||
+            (next.walletId != null && next.walletId != t.walletId));
 
     Widget kindTab(Kind k, String label, IconData icon, Color color) {
       final on = _kind == k;
@@ -972,11 +989,11 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
                         children: [
                           Label(fmt(fromDateKey(t.occurredOn), 'EEE · MMM d, yyyy')),
                           const SizedBox(height: 4),
-                          Text('Edit transaction', style: displayStyle(p, 30)),
+                          Text(tr('Edit transaction'), style: displayStyle(p, 30)),
                         ],
                       ),
                     ),
-                    IconButton(tooltip: 'Close', onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.4))),
+                    IconButton(tooltip: tr('Close'), onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.4))),
                   ],
                 ),
               ),
@@ -995,28 +1012,28 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
                           color: p.inkA(0.02),
                         ),
                         child: Row(children: [
-                          kindTab(Kind.expense, 'Expense', LucideIcons.arrowUpRight, p.expense),
+                          kindTab(Kind.expense, tr('Expense'), LucideIcons.arrowUpRight, p.expense),
                           const SizedBox(width: 4),
-                          kindTab(Kind.income, 'Income', LucideIcons.arrowDownLeft, p.income),
+                          kindTab(Kind.income, tr('Income'), LucideIcons.arrowDownLeft, p.income),
                           const SizedBox(width: 4),
-                          kindTab(Kind.saving, 'Saving', LucideIcons.piggyBank, p.saving),
+                          kindTab(Kind.saving, tr('Saving'), LucideIcons.piggyBank, p.saving),
                         ]),
                       ),
                       const SizedBox(height: 22),
-                      FieldBlock(label: 'Amount', child: AmountField(controller: _amount, large: true, semanticLabel: 'Amount')),
+                      FieldBlock(label: tr('Amount'), child: AmountField(controller: _amount, large: true, semanticLabel: tr('Amount'))),
                       const SizedBox(height: 22),
                       if (_kind == Kind.saving)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                           decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line), color: p.inkA(0.02)),
-                          child: Text("Savings go into your savings pool — they don't have a category.",
+                          child: Text(tr("Savings go into your savings pool — they don't have a category."),
                               style: bodyStyle(p, 12, color: p.muted(0.5))),
                         )
                       else
                         FieldBlock(
-                          label: 'Category',
+                          label: tr('Category'),
                           child: list.isEmpty && !kept
-                              ? Text('No ${_kind.name} categories yet — add them in Settings.', style: bodyStyle(p, 12, color: p.muted(0.45)))
+                              ? Text(tr('No {name} categories yet — add them in Settings.', {'name': tr(_kind.name)}), style: bodyStyle(p, 12, color: p.muted(0.45)))
                               : GridView.count(
                                   crossAxisCount: 3,
                                   shrinkWrap: true,
@@ -1039,10 +1056,10 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
                       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Expanded(
                           child: FieldBlock(
-                            label: 'Date',
+                            label: tr('Date'),
                             child: DateButton(
                               value: fromDateKey(_date),
-                              hint: 'Date',
+                              hint: tr('Date'),
                               onPicked: (d) {
                                 if (d != null) setState(() => _date = toDateKey(d));
                               },
@@ -1052,15 +1069,23 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
                         const SizedBox(width: 12),
                         Expanded(child: _TimeField(value: _time, onChanged: (v) => setState(() => _time = v))),
                       ]),
+                      if (_kind != Kind.saving && app.walletsReady && app.wallets.isNotEmpty) ...[
+                        const SizedBox(height: 22),
+                        WalletPicker(
+                          value: _wallet ?? defaultWallet(app.wallets)?.id,
+                          onChanged: (id) => setState(() => _wallet = id),
+                          label: _kind == Kind.income ? tr('Received in') : tr('Paid from'),
+                        ),
+                      ],
                       if (_kind != Kind.saving) ...[
                         const SizedBox(height: 22),
                         FieldBlock(
-                          label: 'Place',
+                          label: tr('Place'),
                           child: TextField(
                             controller: _place,
                             inputFormatters: maxChars(Limits.place),
                             decoration: InputDecoration(
-                              hintText: 'Star Kabab, Aarong, Pathao…',
+                              hintText: tr('Star Kabab, Aarong, Pathao…'),
                               prefixIcon: Icon(LucideIcons.mapPin, size: 16, color: p.muted(0.35)),
                             ),
                           ),
@@ -1068,8 +1093,8 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
                       ],
                       const SizedBox(height: 22),
                       FieldBlock(
-                        label: 'Note · optional',
-                        child: TextField(controller: _note, inputFormatters: maxChars(Limits.note), decoration: const InputDecoration(hintText: 'What was it for?')),
+                        label: tr('Note · optional'),
+                        child: TextField(controller: _note, inputFormatters: maxChars(Limits.note), decoration: InputDecoration(hintText: tr('What was it for?'))),
                       ),
                       if (_error != null) ...[const SizedBox(height: 16), _ErrorText(_error!)],
                     ],
@@ -1088,7 +1113,7 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
                           ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.6, color: p.expense))
                           : Icon(LucideIcons.trash2, size: 16, color: p.muted(0.7)),
                       const SizedBox(width: 8),
-                      Text('Delete', style: bodyStyle(p, 14, color: p.muted(0.8))),
+                      Text(tr('Delete'), style: bodyStyle(p, 14, color: p.muted(0.8))),
                     ]),
                   ),
                   const SizedBox(width: 12),
@@ -1096,7 +1121,7 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
                     child: PrimaryButton(
                       expand: true,
                       busy: _busy == 'save',
-                      label: 'Save changes',
+                      label: tr('Save changes'),
                       onPressed: next != null && changed && _busy == null ? () => _save(next) : null,
                     ),
                   ),

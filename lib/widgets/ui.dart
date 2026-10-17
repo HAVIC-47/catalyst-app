@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 
 /// `.card`: hairline border, card fill, soft lift on light; lit slab on black.
 class CardBox extends StatelessWidget {
@@ -90,12 +91,28 @@ class Label extends StatelessWidget {
       style: TextStyle(
         fontFamily: Fonts.mono,
         fontSize: size,
-        letterSpacing: size * 0.18,
-        height: 1.4,
+        letterSpacing: isBangla ? 0 : size * 0.18,
+        height: isBangla ? 1.5 : 1.4,
         color: color ?? p.labelColor,
       ),
     );
   }
+}
+
+/// The Catalyst logo: the dark picture on the dark theme, the light one on light.
+class BrandLogo extends StatelessWidget {
+  const BrandLogo({super.key, this.size = 32});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+        Palette.of(context).dark ? 'assets/brand/logo_dark.png' : 'assets/brand/logo_light.png',
+        width: size,
+        height: size,
+        filterQuality: FilterQuality.medium,
+        excludeFromSemantics: true,
+      );
 }
 
 /// Page header: kicker label + display title with an italic accent phrase.
@@ -485,9 +502,18 @@ class FieldBlock extends StatelessWidget {
       );
 }
 
-/// Taka-prefixed amount field.
+/// Amount field with the account currency's sign in front.
 class AmountField extends StatelessWidget {
-  const AmountField({super.key, required this.controller, this.hint = '0', this.large = false, this.onSubmitted, this.autofocus = false, this.semanticLabel});
+  const AmountField({
+    super.key,
+    required this.controller,
+    this.hint = '0',
+    this.large = false,
+    this.onSubmitted,
+    this.autofocus = false,
+    this.semanticLabel,
+    this.signed = false,
+  });
 
   final TextEditingController controller;
   final String hint;
@@ -495,6 +521,7 @@ class AmountField extends StatelessWidget {
   final ValueChanged<String>? onSubmitted;
   final bool autofocus;
   final String? semanticLabel;
+  final bool signed; // allows a minus (a balance can be below zero)
 
   @override
   Widget build(BuildContext context) {
@@ -502,7 +529,7 @@ class AmountField extends StatelessWidget {
     return TextField(
       controller: controller,
       autofocus: autofocus,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      keyboardType: TextInputType.numberWithOptions(decimal: true, signed: signed),
       onSubmitted: onSubmitted,
       style: monoStyle(p, large ? 28 : 14, weight: large ? FontWeight.w600 : FontWeight.w400),
       decoration: InputDecoration(
@@ -513,7 +540,7 @@ class AmountField extends StatelessWidget {
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: large ? 14 : 13),
         prefixIcon: Padding(
           padding: const EdgeInsets.only(left: 14, right: 8),
-          child: Text('৳', style: monoStyle(p, large ? 24 : 14, color: p.muted(0.4))),
+          child: Text(currencySymbol(), style: monoStyle(p, large ? 24 : 14, color: p.muted(0.4))),
         ),
         prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
       ),
@@ -523,9 +550,12 @@ class AmountField extends StatelessWidget {
 
 /// Parse a typed amount ("1,250.5" -> 1250.5); null when not a positive number.
 double? parseAmount(String s) {
-  final v = double.tryParse(s.replaceAll(',', '').trim());
+  final v = double.tryParse(asciiDigits(s).replaceAll(',', '').trim());
   return v != null && v > 0 ? v : null;
 }
+
+/// Parse a typed amount that may be zero or below zero (a balance); null when not a number.
+double? parseSigned(String s) => double.tryParse(asciiDigits(s).replaceAll(',', '').replaceAll('−', '-').trim());
 
 /// Standard snack for failed actions.
 void showError(BuildContext context, Object e) {
@@ -534,15 +564,15 @@ void showError(BuildContext context, Object e) {
 }
 
 /// Confirm before destroying data.
-Future<bool> confirm(BuildContext context, String title, {String action = 'Delete'}) async {
+Future<bool> confirm(BuildContext context, String title, {String? action}) async {
   final p = Palette.of(context);
   final ok = await showDialog<bool>(
     context: context,
     builder: (c) => AlertDialog(
       title: Text(title, style: displayStyle(p, 22)),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(c, false), child: Text('Cancel', style: TextStyle(color: p.muted(0.6)))),
-        TextButton(onPressed: () => Navigator.pop(c, true), child: Text(action, style: TextStyle(color: p.expense))),
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('Cancel'), style: TextStyle(color: p.muted(0.6)))),
+        TextButton(onPressed: () => Navigator.pop(c, true), child: Text(action ?? tr('Delete'), style: TextStyle(color: p.expense))),
       ],
     ),
   );
@@ -551,16 +581,16 @@ Future<bool> confirm(BuildContext context, String title, {String action = 'Delet
 
 /// Small trailing trash button used in lists.
 class TrashButton extends StatelessWidget {
-  const TrashButton({super.key, required this.onPressed, this.tooltip = 'Delete'});
+  const TrashButton({super.key, required this.onPressed, this.tooltip});
 
   final VoidCallback onPressed;
-  final String tooltip;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return IconButton(
-      tooltip: tooltip,
+      tooltip: tooltip ?? tr('Delete'),
       visualDensity: VisualDensity.compact,
       onPressed: onPressed,
       icon: Icon(LucideIcons.trash2, size: 16, color: p.muted(0.3)),

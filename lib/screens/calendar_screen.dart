@@ -11,13 +11,15 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../widgets/mood_face.dart';
 import '../widgets/ui.dart';
 import 'entry_sheet.dart';
 
 enum CalRange { week, month, year }
 
-const _weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const _weekdayKeys = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+List<String> get _weekdays => [for (final d in _weekdayKeys) tr(d)];
 
 class _Cell {
   double income = 0, expense = 0, net = 0;
@@ -146,19 +148,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
             WidgetSpan(
               alignment: PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,
-              child: Label(app.loading ? 'loading…' : '$count active ${count == 1 ? 'day' : 'days'}'),
+              child: Label(app.loading ? tr('loading…') : trn(count, '{n} active day', '{n} active days')),
             ),
           ]),
         ),
         const SizedBox(height: 8),
         Text.rich(
           TextSpan(children: [
-            const TextSpan(text: 'NET\u00A0'),
+            TextSpan(text: tr('NET\u00A0')),
             TextSpan(text: formatCurrency(net, sign: true), style: TextStyle(color: net >= 0 ? p.income : p.expense)),
             TextSpan(text: '  ·  ', style: TextStyle(color: p.muted(0.3))),
-            const TextSpan(text: 'IN\u00A0'),
+            TextSpan(text: tr('IN\u00A0')),
             TextSpan(text: compactCurrency(income), style: TextStyle(color: p.income)),
-            const TextSpan(text: '  OUT\u00A0'),
+            TextSpan(text: tr('  OUT\u00A0')),
             TextSpan(text: compactCurrency(expense), style: TextStyle(color: p.expense)),
           ]),
           style: monoStyle(p, 14, color: p.muted(0.45)),
@@ -181,7 +183,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   child: SegTabs<CalRange>(
                     options: CalRange.values,
                     value: _range,
-                    label: (r) => '${r.name[0].toUpperCase()}${r.name.substring(1)}',
+                    label: (r) => tr('${r.name[0].toUpperCase()}${r.name.substring(1)}'),
                     onChanged: (r) => setState(() {
                       _range = r;
                       _cursor = DateTime.now();
@@ -191,16 +193,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               const SizedBox(width: 8),
               Row(mainAxisSize: MainAxisSize.min, children: [
-                HairlineIconButton(icon: LucideIcons.chevronLeft, size: btn, tooltip: 'Previous', onPressed: () => _step(-1)),
+                HairlineIconButton(icon: LucideIcons.chevronLeft, size: btn, tooltip: tr('Previous'), onPressed: () => _step(-1)),
                 gap,
                 HairlineButton(
                   height: btn,
                   padding: EdgeInsets.symmetric(horizontal: tight ? 8 : 12),
                   onPressed: () => setState(() => _cursor = DateTime.now()),
-                  child: Text('TODAY', style: monoStyle(p, 11.5, color: p.muted(0.7), letterSpacing: 1.6)),
+                  child: Text(tr('TODAY'), style: monoStyle(p, 11.5, color: p.muted(0.7), letterSpacing: 1.6)),
                 ),
                 gap,
-                HairlineIconButton(icon: LucideIcons.chevronRight, size: btn, tooltip: 'Next', onPressed: () => _step(1)),
+                HairlineIconButton(icon: LucideIcons.chevronRight, size: btn, tooltip: tr('Next'), onPressed: () => _step(1)),
               ]),
             ],
           );
@@ -265,7 +267,7 @@ class _Legend extends StatelessWidget {
     Widget swatch(Color c) => Container(width: 10, height: 10, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(2)));
     return Row(
       children: [
-        Text('MOOD', style: style.copyWith(color: p.muted(0.55))),
+        Text(tr('MOOD'), style: style.copyWith(color: p.muted(0.55))),
         const SizedBox(width: 8),
         Container(
           width: 56,
@@ -278,11 +280,11 @@ class _Legend extends StatelessWidget {
         const SizedBox(width: 16),
         swatch(p.tintSpend),
         const SizedBox(width: 6),
-        Text('SPEND', style: style),
+        Text(tr('SPEND'), style: style),
         const SizedBox(width: 16),
         swatch(p.tintIncome),
         const SizedBox(width: 6),
-        Text('INCOME', style: style),
+        Text(tr('INCOME'), style: style),
       ],
     );
   }

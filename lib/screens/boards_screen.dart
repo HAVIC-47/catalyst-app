@@ -19,6 +19,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../util/limits.dart';
 import '../widgets/ai_insights.dart';
 import '../widgets/ui.dart';
@@ -37,40 +38,45 @@ typedef BoardCopy = ({
   String placeholder,
 });
 
-const Map<BoardKind, BoardCopy> boardCopy = {
-  BoardKind.todo: (
-    kicker: 'To-do',
-    title: 'Get it',
-    accent: 'done.',
-    board: 'board',
-    item: 'ticket',
-    icon: LucideIcons.listTodo,
-    intro: "Make a board for anything you're working on — home, work, a trip. Add tickets, then drag them across as they go from to do to done.",
-    hint: 'Board name (e.g. Home, Work)',
-    suggested: 'My tasks',
-    placeholder: 'What needs doing?',
-  ),
-  BoardKind.shopping: (
-    kicker: 'To buy',
-    title: 'Things to',
-    accent: 'buy.',
-    board: 'list',
-    item: 'item',
-    icon: LucideIcons.shoppingCart,
-    intro: 'Make a list for each shop or occasion. Add what you need with a price, then drag items to In cart and Bought as you shop.',
-    hint: 'List name (e.g. Groceries, Eid)',
-    suggested: 'Groceries',
-    placeholder: 'What do you need?',
-  ),
-};
+/// Each kind's words, in the app's language (read again on every use).
+Map<BoardKind, BoardCopy> get boardCopy => {
+      BoardKind.todo: (
+        kicker: tr('To-do'),
+        title: tr('Get it'),
+        accent: tr('done.'),
+        board: tr('board'),
+        item: tr('ticket'),
+        icon: LucideIcons.listTodo,
+        intro: tr("Make a board for anything you're working on — home, work, a trip. Add tickets, then drag them across as they go from to do to done."),
+        hint: tr('Board name (e.g. Home, Work)'),
+        suggested: tr('My tasks'),
+        placeholder: tr('What needs doing?'),
+      ),
+      BoardKind.shopping: (
+        kicker: tr('To buy'),
+        title: tr('Things to'),
+        accent: tr('buy.'),
+        board: tr('list'),
+        item: tr('item'),
+        icon: LucideIcons.shoppingCart,
+        intro: tr('Make a list for each shop or occasion. Add what you need with a price, then drag items to In cart and Bought as you shop.'),
+        hint: tr('List name (e.g. Groceries, Eid)'),
+        suggested: tr('Groceries'),
+        placeholder: tr('What do you need?'),
+      ),
+    };
 
-String ticketNoun(BoardKind k, [int n = 1]) => '${boardCopy[k]!.item}${n == 1 ? '' : 's'}';
+/// "ticket" / "tickets", "item" / "items" — in Bangla the word doesn't change.
+String ticketNoun(BoardKind k, [int n = 1]) => k == BoardKind.todo ? tr(n == 1 ? 'ticket' : 'tickets') : tr(n == 1 ? 'item' : 'items');
+
+/// "board" / "boards", "list" / "lists".
+String boardNoun(BoardKind k, [int n = 1]) => k == BoardKind.todo ? tr(n == 1 ? 'board' : 'boards') : tr(n == 1 ? 'list' : 'lists');
 
 /// A failed save as a sentence (with a hint when the boards tables are missing).
 String boardError(Object e) {
   final msg = e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
   if (RegExp(r'(board|ticket).*(does not exist|schema cache)', caseSensitive: false).hasMatch(msg)) {
-    return "Boards aren't set up yet — run db/supabase.sql in Supabase.";
+    return tr("Boards aren't set up yet — run db/supabase.sql in Supabase.");
   }
   return msg;
 }
@@ -182,7 +188,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
     try {
       await app.placeColumn(id, to);
     } catch (_) {
-      if (mounted) showError(context, "Couldn't move the column — try again.");
+      if (mounted) showError(context, tr("Couldn't move the column — try again."));
     }
   }
 
@@ -257,14 +263,14 @@ class _BoardsScreenState extends State<BoardsScreen> {
     try {
       await app.placeTicket(id, columnId, order);
     } catch (_) {
-      if (mounted) showError(context, "Couldn't move it — try again.");
+      if (mounted) showError(context, tr("Couldn't move it — try again."));
     }
   }
 
   // ---------------------------------------------------------------- board actions
   Future<void> _newBoard() async {
     final copy = boardCopy[widget.kind]!;
-    final name = await _askName(context, title: 'New ${copy.board}', hint: copy.hint, action: 'Create');
+    final name = await _askName(context, title: tr('New {board}', {'board': copy.board}), hint: copy.hint, action: tr('Create'));
     if (name == null || !mounted) return;
     try {
       final b = await context.read<AppState>().createBoard(name, widget.kind);
@@ -279,12 +285,12 @@ class _BoardsScreenState extends State<BoardsScreen> {
     final copy = boardCopy[widget.kind]!;
     try {
       if (action == 'rename') {
-        final name = await _askName(context, title: 'Rename ${copy.board}', initial: board.name, hint: copy.hint);
+        final name = await _askName(context, title: tr('Rename {board}', {'board': copy.board}), initial: board.name, hint: copy.hint);
         if (name != null && name != board.name) await app.renameBoard(board.id, name);
       } else if (action == 'delete') {
         final n = app.tickets.where((t) => t.boardId == board.id).length;
-        final what = n > 0 ? ' and its $n ${ticketNoun(widget.kind, n)}' : '';
-        if (!await confirm(context, 'Delete "${board.name}"$what?')) return;
+        final what = n > 0 ? tr(' and its {n} {things}', {'n': n, 'things': ticketNoun(widget.kind, n)}) : '';
+        if (!await confirm(context, tr('Delete "{name}"{what}?', {'name': board.name, 'what': what}))) return;
         await app.removeBoard(board.id);
       }
     } catch (e) {
@@ -297,15 +303,15 @@ class _BoardsScreenState extends State<BoardsScreen> {
     try {
       switch (action) {
         case 'rename':
-          final name = await _askName(context, title: 'Rename column', initial: c.name, hint: 'Column name');
+          final name = await _askName(context, title: tr('Rename column'), initial: c.name, hint: tr('Column name'));
           if (name != null && name != c.name) await app.renameColumn(c.id, name);
         case 'left':
           await app.moveColumn(c.id, -1);
         case 'right':
           await app.moveColumn(c.id, 1);
         case 'delete':
-          final what = ticketCount > 0 ? ' and its $ticketCount ${ticketNoun(widget.kind, ticketCount)}' : '';
-          if (!await confirm(context, 'Delete "${c.name}"$what?')) return;
+          final what = ticketCount > 0 ? tr(' and its {n} {things}', {'n': ticketCount, 'things': ticketNoun(widget.kind, ticketCount)}) : '';
+          if (!await confirm(context, tr('Delete "{name}"{what}?', {'name': c.name, 'what': what}))) return;
           await app.removeColumn(c.id);
       }
     } catch (e) {
@@ -314,7 +320,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
   }
 
   Future<void> _addColumn(String boardId) async {
-    final name = await _askName(context, title: 'New column', hint: 'Column name (e.g. Waiting)', action: 'Add');
+    final name = await _askName(context, title: tr('New column'), hint: tr('Column name (e.g. Waiting)'), action: tr('Add'));
     if (name == null || !mounted) return;
     try {
       await context.read<AppState>().createColumn(boardId, name);
@@ -359,7 +365,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
             Padding(
               padding: pad,
               child: PageHeader(
-                kicker: '${copy.kicker} · ${mine.length} ${copy.board}${mine.length == 1 ? '' : 's'}',
+                kicker: '${copy.kicker} · ${digits('${mine.length}')} ${boardNoun(widget.kind, mine.length)}',
                 title: copy.title,
                 accent: copy.accent,
               ),
@@ -383,7 +389,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
                         padding: const EdgeInsets.only(right: 8),
                         child: OptionChip(label: b.name, selected: b.id == board?.id, round: true, onTap: () => _choose(b.id)),
                       ),
-                    OptionChip(label: '+ New ${copy.board}', selected: false, round: true, onTap: _newBoard),
+                    OptionChip(label: tr('+ New {board}', {'board': copy.board}), selected: false, round: true, onTap: _newBoard),
                   ],
                 ),
               ),
@@ -391,7 +397,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: app.loading
-                    ? Center(child: Text('Loading…', style: monoStyle(p, 12, color: p.muted(0.3))))
+                    ? Center(child: Text(tr('Loading…'), style: monoStyle(p, 12, color: p.muted(0.3))))
                     : _NewBoardCard(kind: widget.kind, onCreated: _choose),
               )
             else ...[
@@ -403,9 +409,9 @@ class _BoardsScreenState extends State<BoardsScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                 child: Text.rich(
                   TextSpan(children: [
-                    const TextSpan(text: 'Tip: tap '),
+                    TextSpan(text: tr('Tip: tap ')),
                     TextSpan(text: '+', style: TextStyle(fontWeight: FontWeight.w700, color: p.muted(0.7))),
-                    TextSpan(text: ' below to add ${ticketNoun(widget.kind, 2)} from a screenshot of your notes.'),
+                    TextSpan(text: tr(' below to add {x0} from a screenshot of your notes.', {'x0': ticketNoun(widget.kind, 2)})),
                   ]),
                   style: bodyStyle(p, 12, color: p.muted(0.45)),
                 ),
@@ -516,13 +522,13 @@ class _BoardsScreenState extends State<BoardsScreen> {
                 onDragStarted: () => _startColumnDrag(c.id),
                 onDragEnd: (_) => _endColumnDrag(),
                 child: Semantics(
-                  label: '${c.name} column',
-                  hint: 'Long press and drag to move',
+                  label: tr('{name} column', {'name': c.name}),
+                  hint: tr('Long press and drag to move'),
                   // Screen readers move columns with actions instead of dragging.
                   customSemanticsActions: {
-                    if (index > 0) const CustomSemanticsAction(label: 'Move left'): () => _columnMenu('left', c, items.length),
+                    if (index > 0) CustomSemanticsAction(label: tr('Move left')): () => _columnMenu('left', c, items.length),
                     if (index < cols.length - 1)
-                      const CustomSemanticsAction(label: 'Move right'): () => _columnMenu('right', c, items.length),
+                      CustomSemanticsAction(label: tr('Move right')): () => _columnMenu('right', c, items.length),
                   },
                   child: ExcludeSemantics(child: title),
                 ),
@@ -544,7 +550,9 @@ class _BoardsScreenState extends State<BoardsScreen> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: p.line)),
                       child: Text(
-                        _dragging != null ? 'Drop here' : (index == 0 ? 'Add a ${ticketNoun(board.kind)} below' : 'Drag here'),
+                        _dragging != null
+                            ? tr('Drop here')
+                            : (index == 0 ? tr('Add a {thing} below', {'thing': ticketNoun(board.kind)}) : tr('Drag here')),
                         style: bodyStyle(p, 12, color: p.muted(0.35)),
                       ),
                     ),
@@ -617,13 +625,13 @@ class _BoardsScreenState extends State<BoardsScreen> {
         onDragEnd: (_) => _endDrag(),
         child: Semantics(
           button: true,
-          label: '${t.title}, number ${t.number}',
-          hint: 'Long press and drag to move',
+          label: tr('{title}, number {number}', {'title': t.title, 'number': t.number}),
+          hint: tr('Long press and drag to move'),
           // Screen readers move tickets with actions instead of dragging.
           customSemanticsActions: {
             for (final other in cols)
               if (other.id != c.id)
-                CustomSemanticsAction(label: 'Move to ${other.name}'): () =>
+                CustomSemanticsAction(label: tr('Move to {name}', {'name': other.name})): () =>
                     _moveTo(t.id, other.id, context.read<AppState>().ticketsIn(other.id).length),
           },
           child: Material(
@@ -690,8 +698,8 @@ class _BoardTitle extends StatelessWidget {
     final open = items.where((t) => t.columnId != doneId).toList();
     final toGet = open.fold<double>(0, (s, t) => s + (t.amount ?? 0));
     final stats = board.kind == BoardKind.shopping
-        ? '${open.length} to get${toGet > 0 ? ' · ${formatCurrency(toGet)}' : ''}'
-        : '${open.length} open · ${items.length - open.length} done';
+        ? '${tr('{n} to get', {'n': open.length})}${toGet > 0 ? ' · ${formatCurrency(toGet)}' : ''}'
+        : tr('{open} open · {done} done', {'open': open.length, 'done': items.length - open.length});
     // Name and stats share one Expanded row, so the name only truncates when it
     // really doesn't fit (a Flexible beside a Spacer would cap it at half).
     return Row(children: [
@@ -703,12 +711,12 @@ class _BoardTitle extends StatelessWidget {
         ]),
       ),
       PopupMenuButton<String>(
-        tooltip: '${board.name} options',
+        tooltip: tr('{name} options', {'name': board.name}),
         icon: Icon(LucideIcons.ellipsis, size: 18, color: p.muted(0.5)),
         onSelected: onMenu,
         itemBuilder: (_) => [
-          _menuItem(context, 'rename', LucideIcons.pencil, 'Rename ${copy.board}'),
-          _menuItem(context, 'delete', LucideIcons.trash2, 'Delete ${copy.board}', danger: true),
+          _menuItem(context, 'rename', LucideIcons.pencil, tr('Rename {board}', {'board': copy.board})),
+          _menuItem(context, 'delete', LucideIcons.trash2, tr('Delete {board}', {'board': copy.board}), danger: true),
         ],
       ),
     ]);
@@ -761,14 +769,14 @@ class _ColumnHeader extends StatelessWidget {
           child: wrapTitle?.call(_title(p)) ?? _title(p),
         ),
         PopupMenuButton<String>(
-          tooltip: '${column.name} column options',
+          tooltip: tr('{name} column options', {'name': column.name}),
           icon: Icon(LucideIcons.ellipsis, size: 18, color: p.muted(0.45)),
           onSelected: onMenu,
           itemBuilder: (_) => [
-            _menuItem(context, 'rename', LucideIcons.pencil, 'Rename'),
-            _menuItem(context, 'left', LucideIcons.arrowLeft, 'Move left', enabled: !first),
-            _menuItem(context, 'right', LucideIcons.arrowRight, 'Move right', enabled: !last),
-            _menuItem(context, 'delete', LucideIcons.trash2, 'Delete column', danger: true),
+            _menuItem(context, 'rename', LucideIcons.pencil, tr('Rename')),
+            _menuItem(context, 'left', LucideIcons.arrowLeft, tr('Move left'), enabled: !first),
+            _menuItem(context, 'right', LucideIcons.arrowRight, tr('Move right'), enabled: !last),
+            _menuItem(context, 'delete', LucideIcons.trash2, tr('Delete column'), danger: true),
           ],
         ),
       ]),
@@ -845,7 +853,7 @@ class _ColumnPreview extends StatelessWidget {
             _TicketCard(ticket: t, kind: kind, done: false),
             const SizedBox(height: 8),
           ],
-          if (items.length > 6) Text('+${items.length - 6} more', style: bodyStyle(p, 12, color: p.muted(0.45))),
+          if (items.length > 6) Text(tr('+{x0} more', {'x0': items.length - 6}), style: bodyStyle(p, 12, color: p.muted(0.45))),
         ],
       ),
     );
@@ -865,7 +873,8 @@ class PriorityIcon extends StatelessWidget {
       TicketPriority.medium => (LucideIcons.equal, const Color(0xFFB59A3C)),
       TicketPriority.low => (LucideIcons.chevronsDown, p.saving),
     };
-    return Icon(icon, size: 14, color: color, semanticLabel: '${priority.name} priority');
+    final name = '${priority.name[0].toUpperCase()}${priority.name.substring(1)}';
+    return Icon(icon, size: 14, color: color, semanticLabel: tr('{name} priority', {'name': tr('$name|priority')}));
   }
 }
 
@@ -991,7 +1000,7 @@ class _QuickAddState extends State<_QuickAdd> {
               WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
             },
             icon: Icon(LucideIcons.plus, size: 16, color: p.muted(0.45)),
-            label: Text('Add ${ticketNoun(widget.kind)}', style: bodyStyle(p, 13.5, color: p.muted(0.45))),
+            label: Text(tr('Add {x0}', {'x0': ticketNoun(widget.kind)}), style: bodyStyle(p, 13.5, color: p.muted(0.45))),
           ),
         ),
       );
@@ -1013,7 +1022,7 @@ class _QuickAddState extends State<_QuickAdd> {
           ),
           const SizedBox(height: 8),
           Row(children: [
-            PrimaryButton(label: 'Add', height: 38, busy: _busy, onPressed: _text.text.trim().isEmpty ? null : _submit),
+            PrimaryButton(label: tr('Add'), height: 38, busy: _busy, onPressed: _text.text.trim().isEmpty ? null : _submit),
             const SizedBox(width: 6),
             TextButton(
               onPressed: () {
@@ -1021,7 +1030,7 @@ class _QuickAddState extends State<_QuickAdd> {
                 _focus.unfocus();
                 setState(() => _open = false);
               },
-              child: Text('Cancel', style: bodyStyle(p, 13, color: p.muted(0.55))),
+              child: Text(tr('Cancel'), style: bodyStyle(p, 13, color: p.muted(0.55))),
             ),
           ]),
         ],
@@ -1047,7 +1056,7 @@ class _AddColumnTile extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(LucideIcons.plus, size: 16, color: p.muted(0.45)),
           const SizedBox(width: 8),
-          Text('Add column', style: bodyStyle(p, 13.5, color: p.muted(0.45))),
+          Text(tr('Add column'), style: bodyStyle(p, 13.5, color: p.muted(0.45))),
         ]),
       ),
     );
@@ -1114,7 +1123,7 @@ class _NewBoardCardState extends State<_NewBoardCard> {
             ),
           ),
           const SizedBox(height: 14),
-          Text('Start your first ${copy.board}', style: displayStyle(p, 24)),
+          Text(tr('Start your first {board}', {'board': copy.board}), style: displayStyle(p, 24)),
           const SizedBox(height: 6),
           Text(copy.intro, style: bodyStyle(p, 13.5, color: p.muted(0.5), height: 1.5)),
           const SizedBox(height: 14),
@@ -1125,10 +1134,10 @@ class _NewBoardCardState extends State<_NewBoardCard> {
             decoration: InputDecoration(hintText: copy.hint),
           ),
           const SizedBox(height: 10),
-          PrimaryButton(expand: true, icon: LucideIcons.plus, label: 'Create', busy: _busy, onPressed: _name.text.trim().isEmpty ? null : _create),
+          PrimaryButton(expand: true, icon: LucideIcons.plus, label: tr('Create'), busy: _busy, onPressed: _name.text.trim().isEmpty ? null : _create),
           const SizedBox(height: 8),
           Text(
-            'Starts with ${defaultBoardColumns[widget.kind]!.join(' · ')} — rename them or add more any time.',
+            tr('Starts with {columns} — rename them or add more any time.', {'columns': defaultBoardColumns[widget.kind]!.map(tr).join(' · ')}),
             style: bodyStyle(p, 12, color: p.muted(0.4)),
           ),
           const SizedBox(height: 6),
@@ -1138,7 +1147,7 @@ class _NewBoardCardState extends State<_NewBoardCard> {
               style: TextButton.styleFrom(padding: EdgeInsets.zero),
               onPressed: _busy ? null : () => openListScanner(context, widget.kind),
               icon: Icon(LucideIcons.scanText, size: 16, color: p.accentA(0.9)),
-              label: Text('Or start from a screenshot of your list', style: bodyStyle(p, 13.5, weight: FontWeight.w500, color: p.accentA(0.9))),
+              label: Text(tr('Or start from a screenshot of your list'), style: bodyStyle(p, 13.5, weight: FontWeight.w500, color: p.accentA(0.9))),
             ),
           ),
         ],
@@ -1148,7 +1157,7 @@ class _NewBoardCardState extends State<_NewBoardCard> {
 }
 
 /// A one-field dialog for names (boards, columns). Null when cancelled or empty.
-Future<String?> _askName(BuildContext context, {required String title, String initial = '', String hint = '', String action = 'Save'}) async {
+Future<String?> _askName(BuildContext context, {required String title, String initial = '', String hint = '', String? action}) async {
   final p = Palette.of(context);
   final controller = TextEditingController(text: initial);
   final result = await showDialog<String>(
@@ -1163,8 +1172,8 @@ Future<String?> _askName(BuildContext context, {required String title, String in
         onSubmitted: (v) => Navigator.pop(c, v),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(c), child: Text('Cancel', style: TextStyle(color: p.muted(0.6)))),
-        TextButton(onPressed: () => Navigator.pop(c, controller.text), child: Text(action, style: TextStyle(color: p.accent))),
+        TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('Cancel'), style: TextStyle(color: p.muted(0.6)))),
+        TextButton(onPressed: () => Navigator.pop(c, controller.text), child: Text(action ?? tr('Save'), style: TextStyle(color: p.accent))),
       ],
     ),
   );
@@ -1237,7 +1246,7 @@ class _TicketSheetState extends State<_TicketSheet> {
   }
 
   Future<void> _delete(BoardKind kind) async {
-    if (!await confirm(context, 'Delete this ${ticketNoun(kind)}?')) return;
+    if (!await confirm(context, tr('Delete this {x0}?', {'x0': ticketNoun(kind)}))) return;
     if (!mounted) return;
     try {
       await context.read<AppState>().removeTicket(widget.ticket.id);
@@ -1277,21 +1286,21 @@ class _TicketSheetState extends State<_TicketSheet> {
             Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Label('#${t.number} · ${board?.name ?? ''}'),
+                  Label('#${digits('${t.number}')} · ${board?.name ?? ''}'),
                   const SizedBox(height: 4),
-                  Text('Edit ${ticketNoun(kind)}', style: displayStyle(p, 26)),
+                  Text(tr('Edit {x0}', {'x0': ticketNoun(kind)}), style: displayStyle(p, 26)),
                 ]),
               ),
-              IconButton(tooltip: 'Close', onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.45))),
+              IconButton(tooltip: tr('Close'), onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.45))),
             ]),
             const SizedBox(height: 14),
             FieldBlock(
-              label: 'Title',
+              label: tr('Title'),
               child: TextField(controller: _title, minLines: 1, maxLines: 3, inputFormatters: maxChars(Limits.title)),
             ),
             const SizedBox(height: 14),
             FieldBlock(
-              label: 'Status',
+              label: tr('Status'),
               child: AppDropdown(
                 value: _columnId,
                 items: [for (final c in cols) c.id],
@@ -1301,12 +1310,12 @@ class _TicketSheetState extends State<_TicketSheet> {
             ),
             const SizedBox(height: 14),
             FieldBlock(
-              label: 'Priority',
+              label: tr('Priority'),
               child: SegTabs<TicketPriority>(
                 options: TicketPriority.values,
                 value: _priority,
                 expand: true,
-                label: (v) => '${v.name[0].toUpperCase()}${v.name.substring(1)}',
+                label: (v) => tr('${v.name[0].toUpperCase()}${v.name.substring(1)}|priority'),
                 onChanged: (v) => setState(() => _priority = v),
               ),
             ),
@@ -1314,12 +1323,12 @@ class _TicketSheetState extends State<_TicketSheet> {
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(
                 child: FieldBlock(
-                  label: 'Due date',
+                  label: tr('Due date'),
                   child: Row(children: [
-                    Expanded(child: DateButton(value: _due, hint: 'None', onPicked: (d) => setState(() => _due = d))),
+                    Expanded(child: DateButton(value: _due, hint: tr('None'), onPicked: (d) => setState(() => _due = d))),
                     if (_due != null)
                       IconButton(
-                        tooltip: 'Clear due date',
+                        tooltip: tr('Clear due date'),
                         visualDensity: VisualDensity.compact,
                         onPressed: () => setState(() => _due = null),
                         icon: Icon(LucideIcons.x, size: 16, color: p.muted(0.45)),
@@ -1329,27 +1338,27 @@ class _TicketSheetState extends State<_TicketSheet> {
               ),
               if (kind == BoardKind.shopping) ...[
                 const SizedBox(width: 10),
-                Expanded(child: FieldBlock(label: 'Price', child: AmountField(controller: _price, hint: 'Optional'))),
+                Expanded(child: FieldBlock(label: tr('Price'), child: AmountField(controller: _price, hint: tr('Optional')))),
               ],
             ]),
             const SizedBox(height: 14),
             FieldBlock(
-              label: 'Notes',
+              label: tr('Notes'),
               child: TextField(
                 controller: _notes,
                 minLines: 3,
                 maxLines: 6,
                 inputFormatters: maxChars(Limits.description),
                 decoration: InputDecoration(
-                  hintText: kind == BoardKind.shopping ? 'Brand, size, where to get it…' : 'Details, links, next steps…',
+                  hintText: kind == BoardKind.shopping ? tr('Brand, size, where to get it…') : tr('Details, links, next steps…'),
                 ),
               ),
             ),
             const SizedBox(height: 18),
             Row(children: [
-              HairlineIconButton(icon: LucideIcons.trash2, tooltip: 'Delete this ${ticketNoun(kind)}', size: 46, onPressed: () => _delete(kind)),
+              HairlineIconButton(icon: LucideIcons.trash2, tooltip: tr('Delete this {x0}', {'x0': ticketNoun(kind)}), size: 46, onPressed: () => _delete(kind)),
               const SizedBox(width: 10),
-              Expanded(child: PrimaryButton(expand: true, label: 'Save', busy: _busy, onPressed: valid ? () => _save(kind) : null)),
+              Expanded(child: PrimaryButton(expand: true, label: tr('Save'), busy: _busy, onPressed: valid ? () => _save(kind) : null)),
             ]),
           ],
         ),

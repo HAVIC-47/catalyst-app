@@ -3,25 +3,43 @@
 // memo or a screenshot of notes — or, on To-do and To buy, a screenshot of a
 // list. The More sheet holds the other sections (Journal, To-do, To buy, …),
 // New entry, Vault Mode, theme and sign out.
+//
+// It also runs the phone-side helpers: reminders and the home-screen widget
+// follow the data, notices (budget alerts, offline saves) show as snack bars,
+// and slim banners say when the app is offline, when a new version is out, and
+// when bKash / Nagad messages are waiting for review. The first launch after an
+// update pops up what's new.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
 import '../data/app_state.dart';
 import '../models.dart';
+import '../services/notifications.dart';
+import '../services/sms.dart';
+import '../services/updates.dart';
+import '../services/whats_new.dart';
+import '../services/widget_sync.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../theme/theme_controller.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../widgets/ui.dart';
+import '../widgets/wallet_picker.dart';
+import 'about_screen.dart';
 import 'bills_screen.dart';
 import 'boards_screen.dart';
 import 'budgets_screen.dart';
 import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
+import 'dhar_screen.dart';
 import 'entry_sheet.dart';
 import 'goals_screen.dart';
 import 'journal_screen.dart';
@@ -29,8 +47,10 @@ import 'ledger_screen.dart';
 import 'list_scan_sheet.dart';
 import 'memo_sheet.dart';
 import 'settings_screen.dart';
+import 'sms_review_sheet.dart';
+import 'wallets_screen.dart';
 
-enum Section { calendar, dashboard, ledger, journal, todo, shopping, budgets, goals, bills, settings }
+enum Section { calendar, dashboard, ledger, journal, todo, shopping, budgets, goals, bills, wallets, dhar, settings }
 
 const _calendarTab = (Section.calendar, 'Calendar', LucideIcons.calendarDays);
 const _dashboardTab = (Section.dashboard, 'Dashboard', LucideIcons.layoutGrid);
@@ -45,6 +65,8 @@ const _moreSections = [
   (Section.budgets, 'Budgets', LucideIcons.piggyBank),
   (Section.goals, 'Goals', LucideIcons.target),
   (Section.bills, 'Bills', LucideIcons.bell),
+  (Section.wallets, 'Wallets', LucideIcons.wallet),
+  (Section.dhar, 'Dhar', LucideIcons.handCoins),
   (Section.settings, 'Settings', LucideIcons.settings),
 ];
 
@@ -57,24 +79,123 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Section _section = Section.calendar;
+  late final AppState _app = context.read<AppState>();
+  final _subs = <StreamSubscription<Object?>>[];
+  Timer? _follow;
+  List<SmsTxn> _sms = const [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    context.read<AppState>().ensureLoaded();
+    _app.ensureLoaded();
+    _app.addListener(_onData);
+    _subs
+      ..add(_app.notices.stream.listen(_notice))
+      ..add(Notifications.taps.stream.listen(_open))
+      ..add(HomeWidget.actions.stream.listen(_widgetAction));
+    loadLastWallet();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _app.removeListener(_onData);
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _follow?.cancel();
     super.dispose();
   }
 
   // Back in the foreground: pick up anything changed on the web meanwhile.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) context.read<AppState>().load();
+    if (state == AppLifecycleState.resumed) {
+      _app.load();
+      _checkUpdate();
+      _checkSms();
+    }
+  }
+
+  Future<void> _start() async {
+    // Opened from a reminder or from the widget's +.
+    final target = Notifications.launchTarget;
+    Notifications.launchTarget = null;
+    if (target != null) _open(target);
+    final action = await HomeWidget.launchAction();
+    if (action != null) _widgetAction(action);
+    _checkUpdate();
+    _checkSms();
+    if (target == null && action == null) await _whatsNew();
+    await _askForNotifications();
+  }
+
+  /// Once after an update: what it brought (and, if asked, every feature).
+  Future<void> _whatsNew() async {
+    final due = await WhatsNew.due();
+    if (due.isEmpty || !mounted) return;
+    if (await showWhatsNew(context, due) && mounted) await openAbout(context);
+  }
+
+  /// Reminders and the widget follow the data (a moment after it settles).
+  void _onData() {
+    _follow?.cancel();
+    _follow = Timer(const Duration(milliseconds: 600), () {
+      if (_app.loading) return;
+      Notifications.sync(_app);
+      HomeWidget.sync(_app);
+    });
+  }
+
+  void _notice(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Where a notification leads.
+  void _open(String target) {
+    if (!mounted) return;
+    switch (target) {
+      case NoticeTarget.mood:
+        openEntry(context, tab: EntryTab.mood);
+      case NoticeTarget.bills:
+        go(Section.bills);
+      case NoticeTarget.dhar:
+        go(Section.dhar);
+      case NoticeTarget.update:
+        final u = Updates.available.value;
+        if (u != null) Updates.download(u);
+    }
+  }
+
+  void _widgetAction(String action) {
+    if (action == 'add' && mounted) openEntry(context);
+  }
+
+  void _checkUpdate() => Updates.check(
+        onNew: (u) => Notifications.showNow(
+          5000,
+          tr('Catalyst {version} is out', {'version': u.version}),
+          tr('Tap to download the update.'),
+          NoticeTarget.update,
+        ),
+      );
+
+  Future<void> _checkSms() async {
+    final found = await SmsCapture.pending();
+    if (mounted) setState(() => _sms = found);
+  }
+
+  /// Ask once for notification permission (Android 13+) when a reminder is on.
+  Future<void> _askForNotifications() async {
+    final r = _app.reminders;
+    if (!Notifications.supported || !(r.checkin || r.bills || r.dhar || r.budgets)) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('notifications:asked') ?? false) return;
+    await prefs.setBool('notifications:asked', true);
+    await Notifications.request();
   }
 
   void go(Section s) => setState(() => _section = s);
@@ -96,7 +217,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final p = Palette.of(context);
     final pages = {
       Section.calendar: const CalendarScreen(),
-      Section.dashboard: DashboardScreen(onCustomize: () => go(Section.settings)),
+      Section.dashboard: DashboardScreen(onCustomize: () => go(Section.settings), onWallets: () => go(Section.wallets)),
       Section.ledger: const LedgerScreen(),
       Section.journal: const JournalScreen(),
       Section.todo: const BoardsScreen(kind: BoardKind.todo),
@@ -104,6 +225,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       Section.budgets: const BudgetsScreen(),
       Section.goals: const GoalsScreen(),
       Section.bills: const BillsScreen(),
+      Section.wallets: const WalletsScreen(),
+      Section.dhar: const DharScreen(),
       Section.settings: const SettingsScreen(),
     };
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -124,6 +247,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             child: Column(
               children: [
                 const _TopBar(),
+                const _OfflineBanner(),
+                const _UpdateBanner(),
+                if (_sms.isNotEmpty)
+                  _Banner(
+                    icon: LucideIcons.messageSquareText,
+                    text: trn(_sms.length, '{n} new bKash / Nagad message to review', '{n} new bKash / Nagad messages to review'),
+                    action: tr('Review'),
+                    onAction: () => openSmsReview(context, _sms, onDone: _checkSms),
+                  ),
                 Expanded(child: KeyedSubtree(key: ValueKey(_section), child: pages[_section]!)),
               ],
             ),
@@ -131,7 +263,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           bottomNavigationBar: _BottomNav(
             current: _section,
             onSelect: go,
-            scanLabel: _board == null ? 'Scan a memo or notes' : 'Add from a screenshot of your list',
+            scanLabel: _board == null ? tr('Scan a memo or notes') : tr('Add from a screenshot of your list'),
             onScan: () => _scan(context),
             onMore: () => _openMore(context),
           ),
@@ -162,6 +294,93 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 }
 
+/// A slim notice under the top bar, with one action and an optional close.
+class _Banner extends StatelessWidget {
+  const _Banner({required this.icon, required this.text, this.action, this.onAction, this.onClose, this.tint});
+
+  final IconData icon;
+  final String text;
+  final String? action;
+  final VoidCallback? onAction;
+  final VoidCallback? onClose;
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final c = tint ?? p.accent;
+    return Container(
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.08), border: Border(bottom: BorderSide(color: p.line))),
+      padding: const EdgeInsets.fromLTRB(16, 4, 6, 4),
+      child: Row(children: [
+        Icon(icon, size: 15, color: c),
+        const SizedBox(width: 10),
+        Expanded(child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 12.5, color: p.muted(0.75)))),
+        if (action != null)
+          TextButton(
+            onPressed: onAction,
+            child: Text(action!.toUpperCase(), style: monoStyle(p, 11, weight: FontWeight.w600, color: c, letterSpacing: 1.2)),
+          ),
+        if (onClose != null)
+          IconButton(
+            tooltip: tr('Dismiss'),
+            visualDensity: VisualDensity.compact,
+            onPressed: onClose,
+            icon: Icon(LucideIcons.x, size: 15, color: p.muted(0.45)),
+          ),
+      ]),
+    );
+  }
+}
+
+/// No connection, or entries made offline still waiting to be sent.
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final app = context.watch<AppState>();
+    if (!app.offline && app.unsent == 0) return const SizedBox.shrink();
+    final since = app.offlineSince;
+    final text = app.offline
+        ? [
+            since == null
+                ? tr('Offline — nothing saved on this phone yet.')
+                : tr('Offline — showing what was saved {when}.', {'when': fmt(since, 'MMM d, h:mm a')}),
+            if (app.unsent > 0) trn(app.unsent, '{n} change waits to sync.', '{n} changes wait to sync.'),
+          ].join(' ')
+        : trn(app.unsent, '{n} change made offline is waiting to sync.', '{n} changes made offline are waiting to sync.');
+    return _Banner(icon: LucideIcons.cloudOff, text: text, tint: p.muted(0.7), action: tr('Retry'), onAction: app.load);
+  }
+}
+
+/// A newer release on GitHub: Update opens its APK in the browser (it downloads).
+class _UpdateBanner extends StatelessWidget {
+  const _UpdateBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<UpdateInfo?>(
+      valueListenable: Updates.available,
+      builder: (context, u, _) {
+        if (u == null) return const SizedBox.shrink();
+        return _Banner(
+          icon: LucideIcons.download,
+          text: tr('Catalyst {version} is out — you have {current}.', {'version': u.version, 'current': Updates.current}),
+          action: tr('Update'),
+          onAction: () async {
+            if (!await Updates.download(u) && context.mounted) {
+              showError(context, tr('Couldn\'t open the download — get it from {url}', {'url': latestApkUrl}));
+            }
+          },
+          onClose: () => Updates.dismiss(u),
+        );
+      },
+    );
+  }
+}
+
 class _TopBar extends StatelessWidget {
   const _TopBar();
 
@@ -175,7 +394,7 @@ class _TopBar extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Label('Today'),
+          Label(tr('Today')),
           const SizedBox(width: 8),
           Text(fmt(DateTime.now(), 'EEE, MMM d, yyyy'), style: monoStyle(p, 14, color: p.muted(0.7))),
         ],
@@ -239,7 +458,7 @@ class _BottomNav extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
             children: [
-              for (final t in [_calendarTab, _dashboardTab]) item(t.$2, t.$3, current == t.$1, () => onSelect(t.$1)),
+              for (final t in [_calendarTab, _dashboardTab]) item(tr(t.$2), t.$3, current == t.$1, () => onSelect(t.$1)),
               // Add from a photo (a memo or notes, or a list on the boards) — the
               // center action. Same fixed height as the tabs, so the bar never grows.
               Expanded(
@@ -275,8 +494,8 @@ class _BottomNav extends StatelessWidget {
                   ),
                 ),
               ),
-              item(_ledgerTab.$2, _ledgerTab.$3, current == _ledgerTab.$1, () => onSelect(_ledgerTab.$1)),
-              item('More', LucideIcons.ellipsis, moreActive, onMore),
+              item(tr(_ledgerTab.$2), _ledgerTab.$3, current == _ledgerTab.$1, () => onSelect(_ledgerTab.$1)),
+              item(tr('More'), LucideIcons.ellipsis, moreActive, onMore),
             ],
           ),
         ),
@@ -318,8 +537,8 @@ class _MoreSheet extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Row(children: [
-                const Expanded(child: Label('More')),
-                IconButton(tooltip: 'Close', onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.45))),
+                Expanded(child: Label(tr('More'))),
+                IconButton(tooltip: tr('Close'), onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: p.muted(0.45))),
               ]),
               const SizedBox(height: 4),
               GridView.count(
@@ -334,7 +553,7 @@ class _MoreSheet extends StatelessWidget {
                     Semantics(
                       button: true,
                       selected: current == s.$1,
-                      label: s.$2,
+                      label: tr(s.$2),
                       child: Material(
                         color: current == s.$1 ? p.accentA(0.08) : Colors.transparent,
                         shape: RoundedRectangleBorder(
@@ -350,7 +569,7 @@ class _MoreSheet extends StatelessWidget {
                               children: [
                                 Icon(s.$3, size: 20, color: current == s.$1 ? p.accent : p.muted(0.6)),
                                 const SizedBox(height: 6),
-                                Text(s.$2,
+                                Text(tr(s.$2),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: bodyStyle(p, 11, weight: FontWeight.w500, color: current == s.$1 ? p.accent : p.muted(0.6))),
@@ -369,19 +588,19 @@ class _MoreSheet extends StatelessWidget {
                 expand: true,
                 height: 48,
                 icon: LucideIcons.plus,
-                label: 'New entry',
+                label: tr('New entry'),
                 onPressed: onNewEntry,
               ),
               const SizedBox(height: 10),
               _Row(
-                label: 'Vault Mode',
-                info: 'Treat every transaction as part of your savings vault: income is added to savings and '
-                    'expenses are drawn from it, so the savings chart tracks your true net flow.',
+                label: tr('Vault Mode'),
+                info: tr('Treat every transaction as part of your savings vault: income is added to savings and '
+                    'expenses are drawn from it, so the savings chart tracks your true net flow.'),
                 trailing: GestureDetector(
                   onTap: () => app.setVaultMode(!app.vaultMode),
                   child: Semantics(
                     toggled: app.vaultMode,
-                    label: 'Vault Mode',
+                    label: tr('Vault Mode'),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
@@ -392,7 +611,7 @@ class _MoreSheet extends StatelessWidget {
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(LucideIcons.vault, size: 14, color: app.vaultMode ? p.accent : p.muted(0.5)),
                         const SizedBox(width: 6),
-                        Text('Vault', style: bodyStyle(p, 12, weight: FontWeight.w500, color: app.vaultMode ? p.accent : p.muted(0.5))),
+                        Text(tr('Vault'), style: bodyStyle(p, 12, weight: FontWeight.w500, color: app.vaultMode ? p.accent : p.muted(0.5))),
                         const SizedBox(width: 8),
                         PillSwitch(on: app.vaultMode, width: 26, height: 15),
                       ]),
@@ -401,10 +620,10 @@ class _MoreSheet extends StatelessWidget {
                 ),
               ),
               _Row(
-                label: 'Theme',
+                label: tr('Theme'),
                 trailing: HairlineIconButton(
                   icon: theme.dark ? LucideIcons.sun : LucideIcons.moon,
-                  tooltip: theme.dark ? 'Switch to light mode' : 'Switch to dark mode',
+                  tooltip: theme.dark ? tr('Switch to light mode') : tr('Switch to dark mode'),
                   onPressed: theme.toggle,
                 ),
               ),
@@ -414,12 +633,12 @@ class _MoreSheet extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 onPressed: () async {
                   Navigator.pop(context);
-                  await Supabase.instance.client.auth.signOut();
+                  await app.signOut();
                 },
                 child: Row(children: [
                   Icon(LucideIcons.logOut, size: 16, color: p.muted(0.8)),
                   const SizedBox(width: 12),
-                  Text('Sign out', style: bodyStyle(p, 14, color: p.muted(0.8))),
+                  Text(tr('Sign out'), style: bodyStyle(p, 14, color: p.muted(0.8))),
                   const Spacer(),
                   if (email != null)
                     Flexible(child: Text(email, maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 12, color: p.muted(0.4)))),
@@ -449,7 +668,7 @@ class _Row extends StatelessWidget {
         Text(label, style: bodyStyle(p, 14, color: p.muted(0.7))),
         if (info != null)
           IconButton(
-            tooltip: 'What is $label?',
+            tooltip: tr('What is {label}?', {'label': label}),
             visualDensity: VisualDensity.compact,
             icon: Icon(LucideIcons.info, size: 15, color: p.muted(0.4)),
             onPressed: () => showDialog<void>(
@@ -457,7 +676,7 @@ class _Row extends StatelessWidget {
               builder: (c) => AlertDialog(
                 title: Text(label, style: displayStyle(p, 22)),
                 content: Text(info!, style: bodyStyle(p, 14, color: p.muted(0.7), height: 1.5)),
-                actions: [TextButton(onPressed: () => Navigator.pop(c), child: Text('Got it', style: TextStyle(color: p.accent)))],
+                actions: [TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('Got it'), style: TextStyle(color: p.accent)))],
               ),
             ),
           ),

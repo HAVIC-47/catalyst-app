@@ -18,10 +18,13 @@ import '../data/scan.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
+import '../util/currency.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../util/limits.dart';
 import '../widgets/scan_ui.dart';
 import '../widgets/ui.dart';
+import '../widgets/wallet_picker.dart';
 import 'entry_sheet.dart';
 
 Future<void> openMemoScanner(BuildContext context) {
@@ -180,6 +183,10 @@ class _MemoSheetState extends State<MemoSheet> {
   List<_Entry> _entries = [];
   ({int count, double spent, double earned, List<Category> created})? _noted;
   int _run = 0; // bumps on reset, so a late reply from an abandoned scan is ignored
+  String? _walletId; // where the money came from / went (null = the one used last)
+
+  /// The wallet the scanned entries go in (null while the database has no wallets).
+  String? _wallet(AppState app) => app.walletsReady ? _walletId ?? startWallet(app.wallets) : null;
 
   @override
   void dispose() {
@@ -243,7 +250,7 @@ class _MemoSheetState extends State<MemoSheet> {
   Future<void> _read(Uint8List bytes) async {
     final mime = imageMime(bytes);
     if (mime == null) {
-      _fail('Couldn\'t open that image — use a JPEG or PNG photo.');
+      _fail(tr('Couldn\'t open that image — use a JPEG or PNG photo.'));
       return;
     }
     final run = ++_run;
@@ -268,12 +275,12 @@ class _MemoSheetState extends State<MemoSheet> {
       } else if (memo is Map<String, dynamic>) {
         _review(_Memo.fromJson(memo));
       } else {
-        throw const ScanError('The memo reader couldn\'t process this photo.');
+        throw ScanError(tr('The memo reader couldn\'t process this photo.'));
       }
     } on ScanError catch (e) {
       if (run == _run) _fail(e.message);
     } catch (_) {
-      if (run == _run) _fail('No connection — try again.');
+      if (run == _run) _fail(tr('No connection — try again.'));
     }
   }
 
@@ -321,6 +328,7 @@ class _MemoSheetState extends State<MemoSheet> {
       _error = '';
     });
     final occurredAt = combineDateTime(_dateKey, _time);
+    final wallet = _wallet(app);
     var done = 0;
     try {
       for (final (line, amount) in chosen) {
@@ -334,11 +342,13 @@ class _MemoSheetState extends State<MemoSheet> {
           note: _clip(line.name.text, Limits.note),
           occurredOn: _dateKey,
           occurredAt: occurredAt,
+          walletId: wallet,
         ));
         // Mark it saved right away so a retry after an error never adds it twice.
         line.saved = true;
         done++;
       }
+      rememberWallet(wallet);
       if (!mounted) return;
       setState(() {
         _addedCount = done;
@@ -347,8 +357,8 @@ class _MemoSheetState extends State<MemoSheet> {
       });
     } catch (e) {
       if (!mounted) return;
-      final msg = e is PostgrestException ? e.message : 'Couldn\'t save — check your connection.';
-      setState(() => _error = done > 0 ? 'Added $done of ${chosen.length}. $msg Tap Add again for the rest.' : msg);
+      final msg = e is PostgrestException ? e.message : tr('Couldn\'t save — check your connection.');
+      setState(() => _error = done > 0 ? tr('Added {done} of {n}. {msg} Tap Add again for the rest.', {'done': done, 'n': chosen.length, 'msg': msg}) : msg);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -411,6 +421,7 @@ class _MemoSheetState extends State<MemoSheet> {
       _error = '';
     });
     final created = <Category>[];
+    final wallet = _wallet(app);
     var done = 0;
     var spent = 0.0, earned = 0.0;
     // Keeps what did get saved, so the done screen tells the whole story even after a retry.
@@ -457,6 +468,7 @@ class _MemoSheetState extends State<MemoSheet> {
           note: _clip(e.name.text, Limits.note),
           occurredOn: e.date,
           occurredAt: combineDateTime(e.date, _time),
+          walletId: wallet,
         ));
         // Mark it saved right away so a retry after an error never adds it twice.
         e.saved = true;
@@ -467,6 +479,7 @@ class _MemoSheetState extends State<MemoSheet> {
           spent += amount;
         }
       }
+      rememberWallet(wallet);
       if (!mounted) return;
       setState(() {
         tally();
@@ -474,10 +487,10 @@ class _MemoSheetState extends State<MemoSheet> {
       });
     } catch (e) {
       if (!mounted) return;
-      final msg = e is PostgrestException ? e.message : 'Couldn\'t save — check your connection.';
+      final msg = e is PostgrestException ? e.message : tr('Couldn\'t save — check your connection.');
       setState(() {
         tally();
-        _error = done > 0 ? 'Added $done of ${chosen.length}. $msg Tap Add again for the rest.' : msg;
+        _error = done > 0 ? tr('Added {done} of {n}. {msg} Tap Add again for the rest.', {'done': done, 'n': chosen.length, 'msg': msg}) : msg;
       });
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -494,15 +507,15 @@ class _MemoSheetState extends State<MemoSheet> {
     final p = Palette.of(context);
     final body = switch (_step) {
       _Step.pick => _pickView(p),
-      _Step.reading => ScanReading(photo: _photo, text: 'Reading the memo…'),
+      _Step.reading => ScanReading(photo: _photo, text: tr('Reading the memo…')),
       _Step.review => _reviewView(p),
       _Step.notes => _notesView(p),
       _Step.done => _noted != null ? _notesDoneView(p, _noted!) : _doneView(p),
       _Step.error => ScanFailed(photo: _photo, message: _error, onRetry: _reset),
     };
     return ScanSheet(
-      label: 'Memo · notes',
-      title: 'Scan a memo',
+      label: tr('Memo · notes'),
+      title: tr('Scan a memo'),
       tall: _step == _Step.review || _step == _Step.notes,
       body: body,
     );
@@ -515,24 +528,24 @@ class _MemoSheetState extends State<MemoSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Take a photo of a memo or receipt — or choose a screenshot of your notes (Notepad, any notes app, a chat) with '
+            tr('Take a photo of a memo or receipt — or choose a screenshot of your notes (Notepad, any notes app, a chat) with '
             'expenses and income. You check everything before it\'s saved, and categories your note names that you don\'t '
-            'have yet are created for you.',
+            'have yet are created for you.'),
             style: bodyStyle(p, 14, color: p.muted(0.6), height: 1.5),
           ),
           const SizedBox(height: 18),
           Row(children: [
-            Expanded(child: ScanChoice(icon: LucideIcons.camera, label: 'Take photo', primary: true, onTap: () => _pick(ImageSource.camera))),
+            Expanded(child: ScanChoice(icon: LucideIcons.camera, label: tr('Take photo'), primary: true, onTap: () => _pick(ImageSource.camera))),
             const SizedBox(width: 12),
             Expanded(
-              child: ScanChoice(icon: LucideIcons.imageUp, label: 'Choose photo or screenshot', primary: false, onTap: () => _pick(ImageSource.gallery)),
+              child: ScanChoice(icon: LucideIcons.imageUp, label: tr('Choose photo or screenshot'), primary: false, onTap: () => _pick(ImageSource.gallery)),
             ),
           ]),
           const SizedBox(height: 16),
           Center(
             child: TextButton(
               onPressed: widget.onManualEntry,
-              child: Text('Add an entry by hand instead', style: bodyStyle(p, 12.5, color: p.muted(0.55))),
+              child: Text(tr('Add an entry by hand instead'), style: bodyStyle(p, 12.5, color: p.muted(0.55))),
             ),
           ),
         ],
@@ -549,7 +562,7 @@ class _MemoSheetState extends State<MemoSheet> {
         children: [
           Icon(LucideIcons.circleCheck, size: 40, color: p.income),
           const SizedBox(height: 10),
-          Text('Added $_addedCount expense${_addedCount == 1 ? '' : 's'}', style: displayStyle(p, 24, weight: FontWeight.w600)),
+          Text(trn(_addedCount, 'Added {n} expense', 'Added {n} expenses'), style: displayStyle(p, 24, weight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text('${formatCurrency(_addedSum)}${place.isEmpty ? '' : ' · $place'}', style: monoStyle(p, 13, color: p.muted(0.6))),
           const SizedBox(height: 18),
@@ -563,10 +576,10 @@ class _MemoSheetState extends State<MemoSheet> {
         HairlineButton(
           height: 44,
           onPressed: _reset,
-          child: Text('Scan another', style: bodyStyle(p, 14, color: p.muted(0.85))),
+          child: Text(tr('Scan another'), style: bodyStyle(p, 14, color: p.muted(0.85))),
         ),
         const SizedBox(width: 10),
-        PrimaryButton(label: 'Done', height: 44, onPressed: () => Navigator.pop(context)),
+        PrimaryButton(label: tr('Done'), height: 44, onPressed: () => Navigator.pop(context)),
       ]);
 
   Widget _notesDoneView(Palette p, ({int count, double spent, double earned, List<Category> created}) n) {
@@ -578,14 +591,14 @@ class _MemoSheetState extends State<MemoSheet> {
           const SizedBox(height: 10),
           Semantics(
             liveRegion: true,
-            child: Text('Added ${n.count} ${n.count == 1 ? 'entry' : 'entries'}', style: displayStyle(p, 24, weight: FontWeight.w600)),
+            child: Text(trn(n.count, 'Added {n} entry', 'Added {n} entries'), style: displayStyle(p, 24, weight: FontWeight.w600)),
           ),
           const SizedBox(height: 4),
           Text.rich(
             TextSpan(children: [
-              if (n.spent > 0) TextSpan(text: 'Spent ${formatCurrency(n.spent)}', style: TextStyle(color: p.expense)),
+              if (n.spent > 0) TextSpan(text: tr('Spent {amount}', {'amount': formatCurrency(n.spent)}), style: TextStyle(color: p.expense)),
               if (n.spent > 0 && n.earned > 0) const TextSpan(text: ' · '),
-              if (n.earned > 0) TextSpan(text: 'Earned ${formatCurrency(n.earned)}', style: TextStyle(color: p.income)),
+              if (n.earned > 0) TextSpan(text: tr('Earned {amount}', {'amount': formatCurrency(n.earned)}), style: TextStyle(color: p.income)),
             ]),
             textAlign: TextAlign.center,
             style: monoStyle(p, 13, color: p.muted(0.6)),
@@ -593,8 +606,8 @@ class _MemoSheetState extends State<MemoSheet> {
           if (n.created.isNotEmpty) ...[
             const SizedBox(height: 14),
             ScanNotice(
-              lead: 'New ${n.created.length == 1 ? 'category' : 'categories'} created: ',
-              text: '${n.created.map((c) => '${c.name} (${c.kind.name})').join(', ')}. Rename or recolor them in Settings.',
+              lead: n.created.length == 1 ? tr('New category created: ') : tr('New categories created: '),
+              text: tr('{list}. Rename or recolor them in Settings.', {'list': n.created.map((c) => '${c.name} (${tr(c.kind.name)})').join(', ')}),
             ),
           ],
           const SizedBox(height: 18),
@@ -615,7 +628,7 @@ class _MemoSheetState extends State<MemoSheet> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(LucideIcons.rotateCcw, size: 16, color: p.muted(0.75)),
             const SizedBox(width: 8),
-            Text('Retake', style: bodyStyle(p, 14, color: p.muted(0.8))),
+            Text(tr('Retake'), style: bodyStyle(p, 14, color: p.muted(0.8))),
           ]),
         ),
         const SizedBox(width: 12),
@@ -649,21 +662,21 @@ class _MemoSheetState extends State<MemoSheet> {
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
             children: [
               FieldBlock(
-                label: 'Shop',
+                label: tr('Shop'),
                 child: TextField(
                   controller: _place,
                   inputFormatters: maxChars(Limits.place),
-                  decoration: const InputDecoration(hintText: 'Shop or place'),
+                  decoration: InputDecoration(hintText: tr('Shop or place')),
                 ),
               ),
               const SizedBox(height: 14),
               Row(children: [
                 Expanded(
                   child: FieldBlock(
-                    label: 'Date',
+                    label: tr('Date'),
                     child: DateButton(
                       value: date,
-                      hint: 'Date',
+                      hint: tr('Date'),
                       onPicked: (d) {
                         if (d != null) setState(() => _dateKey = toDateKey(d));
                       },
@@ -673,7 +686,7 @@ class _MemoSheetState extends State<MemoSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FieldBlock(
-                    label: 'Time',
+                    label: tr('Time'),
                     child: HairlineButton(
                       height: 44,
                       fill: p.inkA(0.02),
@@ -690,11 +703,12 @@ class _MemoSheetState extends State<MemoSheet> {
               ]),
               if (_oddDate.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text('The memo\'s date read as $_oddDate — using today instead. Change it above if that\'s wrong.',
+                Text(tr('The memo\'s date read as {oddDate} — using today instead. Change it above if that\'s wrong.', {'oddDate': _oddDate}),
                     style: bodyStyle(p, 12, color: p.accent)),
               ],
+              ..._walletField(),
               const SizedBox(height: 20),
-              Label('Items · ${_lines.length}'),
+              Label(tr('Items · {n}', {'n': _lines.length})),
               const SizedBox(height: 8),
               Container(
                 decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line)),
@@ -707,11 +721,12 @@ class _MemoSheetState extends State<MemoSheet> {
               ),
               if (m.discount > 0) ...[
                 const SizedBox(height: 8),
-                Text('Discount ${formatCurrency(m.discount)} shared across the items.', style: bodyStyle(p, 12, color: p.muted(0.55))),
+                Text(tr('Discount {amount} shared across the items.', {'amount': formatCurrency(m.discount)}), style: bodyStyle(p, 12, color: p.muted(0.55))),
               ],
               if (m.currency.isNotEmpty && m.currency != 'BDT') ...[
                 const SizedBox(height: 8),
-                Text('This memo is in ${m.currency} — amounts are saved as taka.', style: bodyStyle(p, 12, color: p.accent)),
+                Text(tr('This memo is in {currency} — amounts are saved as {x1}, as written.', {'currency': m.currency, 'x1': tr(currentCurrency.name)}),
+                    style: bodyStyle(p, 12, color: p.accent)),
               ],
               const SizedBox(height: 14),
               Wrap(
@@ -719,18 +734,18 @@ class _MemoSheetState extends State<MemoSheet> {
                 runSpacing: 6,
                 children: [
                   Text.rich(TextSpan(children: [
-                    const TextSpan(text: 'Memo total '),
+                    TextSpan(text: tr('Memo total ')),
                     TextSpan(text: m.total > 0 ? formatCurrency(m.total) : '—', style: TextStyle(color: p.ink)),
                   ]), style: monoStyle(p, 13, color: p.muted(0.55))),
                   Text.rich(TextSpan(children: [
-                    const TextSpan(text: 'Adding '),
+                    TextSpan(text: tr('Adding ')),
                     TextSpan(text: formatCurrency(sum), style: TextStyle(color: p.expense)),
                   ]), style: monoStyle(p, 13, color: p.muted(0.55))),
                 ],
               ),
               if (mismatch) ...[
                 const SizedBox(height: 6),
-                Text('That doesn\'t match the memo total — check the amounts.', style: bodyStyle(p, 12, color: p.expense)),
+                Text(tr('That doesn\'t match the memo total — check the amounts.'), style: bodyStyle(p, 12, color: p.expense)),
               ],
               if (_error.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -741,11 +756,21 @@ class _MemoSheetState extends State<MemoSheet> {
         ),
         _footer(
           p,
-          label: 'Add ${chosen.length} expense${chosen.length == 1 ? '' : 's'}',
+          label: trn(chosen.length, 'Add {n} expense', 'Add {n} expenses'),
           onAdd: chosen.isEmpty ? null : () => _save(chosen, sum),
         ),
       ],
     );
+  }
+
+  /// The wallet picker for the review screens (nothing until the database has wallets).
+  List<Widget> _walletField() {
+    final app = context.watch<AppState>();
+    if (!app.walletsReady || app.wallets.isEmpty) return const [];
+    return [
+      const SizedBox(height: 14),
+      WalletPicker(value: _wallet(app), onChanged: (id) => setState(() => _walletId = id), label: tr('Wallet')),
+    ];
   }
 
   static const _plainInput = InputDecoration(
@@ -780,7 +805,7 @@ class _MemoSheetState extends State<MemoSheet> {
                 decoration: _plainInput,
               ),
             ),
-            Text('৳', style: monoStyle(p, 14, color: p.muted(0.4))),
+            Text(currencySymbol(), style: monoStyle(p, 14, color: p.muted(0.4))),
             SizedBox(
               width: 84,
               child: TextField(
@@ -813,7 +838,7 @@ class _MemoSheetState extends State<MemoSheet> {
               SizedBox(
                 width: 76,
                 child: Text(
-                  l.saved ? 'added' : share > 0 ? '−${formatCurrency(share)}' : '',
+                  l.saved ? tr('added') : share > 0 ? '−${formatCurrency(share)}' : '',
                   textAlign: TextAlign.right,
                   style: monoStyle(p, 11.5, color: p.muted(0.45)),
                 ),
@@ -838,16 +863,18 @@ class _MemoSheetState extends State<MemoSheet> {
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
             children: [
               Text(
-                'Found $n ${n == 1 ? 'entry' : 'entries'} in your note. Check them — untick anything you don\'t want — then add.',
+                trn(n, "Found {n} entry in your note. Check it — untick it if you don't want it — then add.",
+                    "Found {n} entries in your note. Check them — untick anything you don't want — then add."),
                 style: bodyStyle(p, 14, color: p.muted(0.6), height: 1.5),
               ),
               if (fresh.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 ScanNotice(
-                  lead: 'New ${fresh.length == 1 ? 'category' : 'categories'} ',
-                  text: 'from your note will be created: ${fresh.map((f) => '${f.$2} (${f.$1.name})').join(', ')}.',
+                  lead: fresh.length == 1 ? tr('New category ') : tr('New categories '),
+                  text: tr('from your note will be created: {list}.', {'list': fresh.map((f) => '${f.$2} (${tr(f.$1.name)})').join(', ')}),
                 ),
               ],
+              ..._walletField(),
               const SizedBox(height: 14),
               Container(
                 decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line)),
@@ -864,11 +891,11 @@ class _MemoSheetState extends State<MemoSheet> {
                 runSpacing: 6,
                 children: [
                   Text.rich(TextSpan(children: [
-                    const TextSpan(text: 'Spending '),
+                    TextSpan(text: tr('Spending ')),
                     TextSpan(text: formatCurrency(total(Kind.expense)), style: TextStyle(color: p.expense)),
                   ]), style: monoStyle(p, 13, color: p.muted(0.55))),
                   Text.rich(TextSpan(children: [
-                    const TextSpan(text: 'Income '),
+                    TextSpan(text: tr('Income ')),
                     TextSpan(text: formatCurrency(total(Kind.income)), style: TextStyle(color: p.income)),
                   ]), style: monoStyle(p, 13, color: p.muted(0.55))),
                 ],
@@ -882,7 +909,7 @@ class _MemoSheetState extends State<MemoSheet> {
         ),
         _footer(
           p,
-          label: _saving ? 'Adding…' : 'Add ${chosen.length} ${chosen.length == 1 ? 'entry' : 'entries'}',
+          label: _saving ? tr('Adding…') : trn(chosen.length, 'Add {n} entry', 'Add {n} entries'),
           onAdd: chosen.isEmpty ? null : _saveNotes,
         ),
       ],
@@ -920,7 +947,7 @@ class _MemoSheetState extends State<MemoSheet> {
             ),
             Text(income ? '+' : '−', style: monoStyle(p, 14, color: income ? p.income : p.expense)),
             const SizedBox(width: 3),
-            Text('৳', style: monoStyle(p, 14, color: p.muted(0.4))),
+            Text(currencySymbol(), style: monoStyle(p, 14, color: p.muted(0.4))),
             SizedBox(
               width: 84,
               child: TextField(
@@ -945,14 +972,14 @@ class _MemoSheetState extends State<MemoSheet> {
                     options: const [Kind.expense, Kind.income],
                     value: e.type,
                     compact: true,
-                    label: (k) => k == Kind.income ? 'Income' : 'Expense',
+                    label: (k) => k == Kind.income ? tr('Income') : tr('Expense'),
                     onChanged: (k) => setState(() => e.type = k),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: DateButton(
                       value: fromDateKey(e.date),
-                      hint: 'Date',
+                      hint: tr('Date'),
                       lastDate: DateTime.now(),
                       onPicked: (d) {
                         if (d != null) setState(() => e.date = toDateKey(d));
@@ -966,13 +993,13 @@ class _MemoSheetState extends State<MemoSheet> {
                     child: AppDropdown(
                       value: existing?.name ?? e.category,
                       items: names,
-                      labelOf: (name) => existing == null && name == e.category ? 'New: $name' : name,
+                      labelOf: (name) => existing == null && name == e.category ? tr('New: {name}', {'name': name}) : tr(name),
                       onChanged: (name) => setState(() => e.category = name),
                     ),
                   ),
                   if (e.saved) ...[
                     const SizedBox(width: 10),
-                    Text('added', style: monoStyle(p, 11.5, color: p.muted(0.45))),
+                    Text(tr('added'), style: monoStyle(p, 11.5, color: p.muted(0.45))),
                   ],
                 ]),
               ]),

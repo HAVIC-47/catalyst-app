@@ -48,8 +48,18 @@ modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalys
 [release](https://github.com/HAVIC-47/catalyst-app/releases).
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
+From 1.4.0 the app tells you when a new version is out: tap **Update** and the new APK downloads.
 
-**New in 1.3.0:** the **+** reads screenshots too. Choose a screenshot of your notes (Notepad, any notes
+**New in 1.4.0:** **Wallets** (Cash, bKash, Nagad, Bank — what's in each, and transfers between them),
+**Dhar / baki** (money lent and borrowed, part payments, settle), **bills that log themselves** (tick one when
+you pay it and the expense is added, then it moves to next month — with Undo), **reminders** on your phone
+(evening check-in, bills and dhar due tomorrow, budgets at 80% / 100%), works **offline** (everything is kept
+on the phone; entries and moods made offline sync later), a **home-screen widget** (today's spending and a
+quick +), optional **bKash / Nagad SMS** suggestions (read on the phone only), an **AI monthly recap**,
+**currency** choice, the whole app in **বাংলা**, and **Forgot password**, Google sign-in and **Delete account**.
+Also a **new logo**, **About the app** in Settings, and a **What's new** pop-up after each update.
+
+**1.3.0:** the **+** reads screenshots too. Choose a screenshot of your notes (Notepad, any notes
 app) with expenses and income and they're added to your ledger — categories the note names that you don't
 have yet are created for you, and you're told which. On **To-do** and **To buy**, **+** adds a whole list
 from a screenshot straight onto the board (with Undo), and both boards get an **AI summary**. And every
@@ -67,7 +77,8 @@ the memo scanner and Journal now lives in More. Install it over the older versio
 
 The app talks to the **same Supabase backend** as the [web app](https://github.com/HAVIC-47/catalyst)
 ([live](https://catalyst-hishab.vercel.app)). Log in with the same email and you see the same
-transactions, moods, budgets, goals, bills, journal and boards. Anything added on one shows up on the other —
+transactions, moods, budgets, goals, bills, wallets, dhar, journal and boards — and the same settings
+(language, currency, reminders, dashboard sections). Anything added on one shows up on the other —
 pull down to refresh, or just reopen the app.
 
 ## Features
@@ -98,11 +109,36 @@ pull down to refresh, or just reopen the app.
   through the list — on each of those screens and the dashboard. Written by Gemini on the web app's server and saved, so the web and the app show the same one.
 - **Quick entry** — expense and income in one go, five moods with context tags (work, family, travel…),
   and savings; each with a time, place and note.
-- **Budgets** — monthly limits per category that fill up as you spend and turn red when you go over.
+- **Budgets** — monthly limits per category that fill up as you spend and turn red when you go over, with
+  alerts at 80% and 100%.
 - **Goals** — savings targets with progress bars and quick additions.
-- **Bills** — due dates, recurrence, overdue / due-soon warnings, one-tap paid.
+- **Bills** — due dates, recurrence, overdue / due-soon warnings. Tick a bill when you pay it: the expense goes
+  into the ledger (its category, from its wallet) and a repeating bill moves to its next due date — Undo takes
+  both back.
+- **Wallets** — where the money sits: Cash, bKash, Nagad and Bank to start (rename, add, archive). Each shows what's
+  in it now; every entry picks its wallet; transfers move money between wallets without counting as spending, and
+  a fee (a bKash cash-out) is logged as an expense.
+- **Dhar / baki** — money you lent or borrowed, grouped by person: part payments, settle in full, write off.
+- **Reminders** — scheduled on the phone, so they work offline: an evening "how was today?" when no mood is logged,
+  the day before a bill or dhar is due, and budget alerts. Settings has the switches and the check-in time (shared
+  with the web).
+- **Offline** — the app keeps a copy of your data on the phone, so it opens on everything with no connection. Money
+  entries and moods you add (or edit, or delete) offline — for any day, month or year — wait on the phone and sync
+  in order once you're back online; a banner shows what's waiting.
+- **Home-screen widget** — today's spending at a glance, and a **+** that opens a new entry.
+- **bKash / Nagad SMS** (opt-in, Settings) — the app reads confirmation messages from those two senders on the phone
+  and suggests entries (payments, send money, received, recharge, bills) and transfers (cash in / out, add money,
+  to bank). Nothing is saved until you review and add; the messages never leave the phone.
+- **AI monthly recap** — on the dashboard: the month (or year) in one read, with what to do differently next time.
 - **Journal** — a daily log with a mood, plus custom habits to tick off each day.
 - **Vault Mode** — count all income and spending against your savings pool.
+- **Currency** — taka by default; Settings switches how amounts are written (dollar, Canadian dollar, euro, rupee…).
+- **বাংলা** — the whole app in Bangla, with Bengali dates and digits (Settings → Language, or on the login screen).
+- **Account** — forgot password (the email's link opens the app to set a new one), optional Google sign-in,
+  and Delete account (Settings).
+- **Updates** — a banner when a new version is on GitHub; **Update** downloads it. The first launch after an update
+  pops up what's new.
+- **About the app** — Settings lists everything the app does, with what's new in this version on top.
 - **Dark and light themes** — dark by default, the same design as the web.
 
 ## Build from source
@@ -132,8 +168,12 @@ flutter run --dart-define-from-file=env.json
 app's `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`:
 
 ```json
-{ "SUPABASE_URL": "https://YOUR-PROJECT.supabase.co", "SUPABASE_ANON_KEY": "your-anon-key" }
+{ "SUPABASE_URL": "https://YOUR-PROJECT.supabase.co", "SUPABASE_ANON_KEY": "your-anon-key", "GOOGLE_SIGN_IN": "off" }
 ```
+
+Set `"GOOGLE_SIGN_IN": "on"` once the Google provider is set up in Supabase. Password-reset and Google sign-in
+come back into the app through `com.havic47.catalyst://login-callback` — add it to Supabase → Authentication →
+URL Configuration → Redirect URLs (see the web repo's README).
 
 The memo scanner sends photos to the web app's `/api/scan-memo`, the list scanner to its `/api/scan-list`,
 and the AI summaries call its `/api/ai-insights` (set `API_BASE_URL` to point them elsewhere; it defaults to
@@ -142,6 +182,27 @@ the live site), with the user's login token. The Gemini key lives only on that s
 The anon key is public by design; every table is protected by row-level security, so each account
 only ever sees its own rows. The database schema and its hardening live in the web repo
 (`db/supabase.sql`, `db/security.sql`).
+
+### Permissions
+
+`POST_NOTIFICATIONS` (asked once, for reminders), `RECEIVE_BOOT_COMPLETED` (puts scheduled reminders back after
+a restart) and `READ_SMS` — asked for only when the user turns on bKash / Nagad messages in Settings. Google Play
+restricts `READ_SMS`: a Play listing needs the Permissions Declaration (money-management apps can qualify) or a
+build without that feature. GitHub releases aren't affected.
+
+### Releasing
+
+Bump `version:` in `pubspec.yaml`, add what the release brings to `releases()` in `lib/data/features.dart`
+(the What's new pop-up and the top of About — a test fails until the new version has its notes), and tag the
+GitHub release `v` + that version (e.g. `v1.4.0`), with `Catalyst.apk` attached: the in-app update banner
+compares the installed version with the latest release and downloads its `Catalyst.apk`.
+
+### Logo
+
+The launcher icon has a light and a dark version: `mipmap-*` (white mark on red-orange, `values/colors.xml`) and
+`mipmap-night-*` (terracotta mark on near-black, `values-night/colors.xml`). Launchers that follow the system's dark
+mode switch between them; others keep the one shown when the app was installed or updated. Inside the app the logo
+follows the app's theme (`assets/brand/`).
 
 ### Signing
 
@@ -160,6 +221,16 @@ lib/
   data/app_state.dart  central store — mirrors the web's useAppData
   data/secure_session_storage.dart  login session in Keystore-encrypted storage
   data/insights.dart   AI summaries client (the web's /api/ai-insights)
+  data/offline.dart    offline copy of the data + the outbox for entries made offline
+  data/money_db.dart   the database calls behind bills, wallets, transfers and dhar
+  data/account.dart    delete account (the web's /api/account/delete)
+  data/features.dart   what the app does (About the app) and what each release brought (What's new)
+  services/            reminders (local notifications), update check, what's new, home-screen widget, SMS reader
+  screens/wallets_screen.dart, dhar_screen.dart, sms_review_sheet.dart
+  screens/about_screen.dart  About the app and the what's-new pop-up
+  util/money.dart      wallet balances, next due dates, what a bill is logged as — the web's lib/money.ts
+  util/i18n.dart       tr() and Bengali digits; util/bn.dart holds the Bangla text
+  util/currency.dart   the account's currency
   data/scan.dart       photo picker + the web's photo readers (/api/scan-memo, /api/scan-list)
   screens/memo_sheet.dart  memo scanner: memo -> one expense per item; notes -> expenses, income, new categories
   screens/list_scan_sheet.dart  list scanner: screenshot of a list -> tickets on the board, with Undo
@@ -170,6 +241,8 @@ lib/
   theme/               design tokens (same values as the web's globals.css)
   widgets/             cards, buttons, segmented controls, charts, mood faces
   screens/             one screen per web page, plus the entry sheet and app shell
+android/…/MainActivity.kt   the SMS reader and widget channels
+android/…/CatalystWidget.kt the home-screen widget
 build_apk.ps1          release build script (build_apk.bat to double-click)
 ```
 

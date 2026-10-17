@@ -72,9 +72,11 @@ class FakeApp extends AppState {
   }
 
   @override
-  Future<void> addMoney(NewTxn t) async {
-    transactions = [Txn.fromRow({...t.toRow(), 'id': _next('tx'), 'created_at': ''}), ...transactions];
+  Future<Txn> addMoney(NewTxn t, {bool offlineOk = true}) async {
+    final c = Txn.fromRow({...t.toRow(), 'id': _next('tx'), 'created_at': ''});
+    transactions = [c, ...transactions];
     notifyListeners();
+    return c;
   }
 
   /// What the database sends back for an update: the new values, same id and created_at.

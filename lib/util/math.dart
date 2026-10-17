@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'i18n.dart';
+
 /// Pearson correlation coefficient. 0 when undefined (constant series / <2 points).
 double pearson(List<double> xs, List<double> ys) {
   final n = math.min(xs.length, ys.length);
@@ -20,11 +22,11 @@ double pearson(List<double> xs, List<double> ys) {
   return (cov / (dx * dy)).clamp(-1.0, 1.0);
 }
 
-/// Plain-language reading of a correlation magnitude.
+/// Plain-language reading of a correlation magnitude (in the app's language).
 String correlationLabel(double r) {
   final a = r.abs();
-  if (a < 0.12) return 'No clear link';
-  final strength = a >= 0.6 ? 'Strong' : a >= 0.3 ? 'Moderate' : 'Mild';
-  final dir = r > 0 ? 'higher mood ↔ higher net flow' : 'lower mood ↔ heavier spend';
-  return '$strength link · $dir';
+  if (a < 0.12) return tr('No clear link');
+  final strength = a >= 0.6 ? tr('Strong link') : a >= 0.3 ? tr('Moderate link') : tr('Mild link');
+  final dir = r > 0 ? tr('higher mood ↔ higher net flow') : tr('lower mood ↔ heavier spend');
+  return '$strength · $dir';
 }

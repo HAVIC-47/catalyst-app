@@ -10,6 +10,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../util/limits.dart';
 import '../widgets/ai_insights.dart';
 import '../widgets/ui.dart';
@@ -68,26 +69,26 @@ class _GoalsScreenState extends State<GoalsScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          PageHeader(kicker: 'Goals · ${app.goals.length}', title: 'Saving', accent: 'targets.'),
+          PageHeader(kicker: tr('Goals · {n}', {'n': app.goals.length}), title: tr('Saving'), accent: tr('targets.')),
           const AiInsightsCard(topics: [InsightTopic.goals, InsightTopic.savings]),
           CardBox(
             margin: const EdgeInsets.only(bottom: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(controller: _title, inputFormatters: maxChars(Limits.title), decoration: const InputDecoration(hintText: 'Goal (e.g. New laptop)')),
+                TextField(controller: _title, inputFormatters: maxChars(Limits.title), decoration: InputDecoration(hintText: tr('Goal (e.g. New laptop)'))),
                 const SizedBox(height: 10),
                 Row(children: [
-                  Expanded(child: AmountField(controller: _target, hint: 'Target')),
+                  Expanded(child: AmountField(controller: _target, hint: tr('Target'))),
                   const SizedBox(width: 10),
-                  Expanded(child: DateButton(value: _due, hint: 'Due date', onPicked: (d) => setState(() => _due = d))),
+                  Expanded(child: DateButton(value: _due, hint: tr('Due date'), onPicked: (d) => setState(() => _due = d))),
                 ]),
                 const SizedBox(height: 12),
-                PrimaryButton(expand: true, icon: LucideIcons.plus, label: 'Add', busy: _busy, onPressed: valid ? add : null),
+                PrimaryButton(expand: true, icon: LucideIcons.plus, label: tr('Add'), busy: _busy, onPressed: valid ? add : null),
               ],
             ),
           ),
-          if (!app.loading && app.goals.isEmpty) const EmptyCard('No goals yet. What are you saving toward?'),
+          if (!app.loading && app.goals.isEmpty) EmptyCard(tr('No goals yet. What are you saving toward?')),
           for (final g in app.goals) _GoalCard(goal: g),
         ],
       ),
@@ -139,9 +140,9 @@ class _GoalCardState extends State<_GoalCard> {
           Row(children: [
             Expanded(child: Text(g.title, style: displayStyle(p, 21))),
             TrashButton(
-              tooltip: 'Delete goal',
+              tooltip: tr('Delete goal'),
               onPressed: () async {
-                if (!await confirm(context, 'Delete this goal?')) return;
+                if (!await confirm(context, tr('Delete this goal?'))) return;
                 try {
                   await app.removeGoal(g.id);
                 } catch (e) {
@@ -153,7 +154,7 @@ class _GoalCardState extends State<_GoalCard> {
           if (g.dueOn != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: Text('due ${fmt(fromDateKey(g.dueOn!), 'MMM d, yyyy')}', style: monoStyle(p, 11, color: p.muted(0.35))),
+              child: Text(tr('due {date}', {'date': fmt(fromDateKey(g.dueOn!), 'MMM d, yyyy')}), style: monoStyle(p, 11, color: p.muted(0.35))),
             ),
           ClipRRect(
             borderRadius: BorderRadius.circular(9),
@@ -179,13 +180,13 @@ class _GoalCardState extends State<_GoalCard> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                 onSubmitted: (_) => addSaving(),
                 style: monoStyle(p, 13),
-                decoration: const InputDecoration(hintText: '+ add', prefixText: '৳ '),
+                decoration: InputDecoration(hintText: tr('+ add'), prefixText: '${currencySymbol()} '),
               ),
             ),
             const SizedBox(width: 8),
-            HairlineIconButton(icon: LucideIcons.coins, tooltip: 'Add to goal', color: p.income, onPressed: addSaving),
+            HairlineIconButton(icon: LucideIcons.coins, tooltip: tr('Add to goal'), color: p.income, onPressed: addSaving),
             const SizedBox(width: 10),
-            if (done) Text('Reached', style: monoStyle(p, 11, color: p.income)),
+            if (done) Text(tr('Reached'), style: monoStyle(p, 11, color: p.income)),
           ]),
         ],
       ),

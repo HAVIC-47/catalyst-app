@@ -1,6 +1,7 @@
 // Dashboard — port of the web's /app/dashboard: this-month KPI tiles, the
-// mood × money trend (owns the single period selector) and six charts. Sections
-// hidden in Settings (shared with the web via user metadata) are not rendered.
+// mood × money trend (owns the single period selector), wallet balances, the AI
+// monthly recap and insights, and six charts. Sections hidden in Settings
+// (shared with the web via user metadata) are not rendered.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -11,15 +12,18 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
+import '../util/money.dart';
 import '../util/range.dart';
 import '../widgets/ai_insights.dart';
 import '../widgets/charts.dart';
 import '../widgets/ui.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.onCustomize});
+  const DashboardScreen({super.key, required this.onCustomize, this.onWallets});
 
   final VoidCallback onCustomize;
+  final VoidCallback? onWallets;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -49,14 +53,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final window = rangeWindow(_range, _offset);
     final charts = <(String, String, String, Widget)>[
-      ('spent', 'Spent', 'by category', CategoryDonut(transactions: app.transactions, categories: app.categories, kind: Kind.expense, window: window)),
-      ('earned', 'Earned', 'by category', CategoryDonut(transactions: app.transactions, categories: app.categories, kind: Kind.income, window: window)),
-      ('mood', 'Mood', 'distribution', MoodDonut(moods: app.moods, window: window)),
-      ('savings', 'Savings', 'added vs broken', SavingsDonut(transactions: app.transactions, window: window, vaultMode: app.vaultMode)),
-      ('moodTags', 'Mood was about', 'frequency', MoodTagBars(moods: app.moods, window: window)),
-      ('categories', 'Category', 'frequency', CategoryBars(transactions: app.transactions, categories: app.categories, window: window)),
+      ('spent', tr('Spent'), tr('by category'), CategoryDonut(transactions: app.transactions, categories: app.categories, kind: Kind.expense, window: window)),
+      ('earned', tr('Earned'), tr('by category'), CategoryDonut(transactions: app.transactions, categories: app.categories, kind: Kind.income, window: window)),
+      ('mood', tr('Mood'), tr('distribution'), MoodDonut(moods: app.moods, window: window)),
+      ('savings', tr('Savings'), tr('added vs broken'), SavingsDonut(transactions: app.transactions, window: window, vaultMode: app.vaultMode)),
+      ('moodTags', tr('Mood was about'), tr('frequency'), MoodTagBars(moods: app.moods, window: window)),
+      ('categories', tr('Category'), tr('frequency'), CategoryBars(transactions: app.transactions, categories: app.categories, window: window)),
     ].where((c) => show(c.$1)).toList();
-    final nothing = hidden != null && !show('kpis') && !show('trend') && !show('insights') && charts.isEmpty;
+    final nothing = hidden != null &&
+        !show('kpis') &&
+        !show('trend') &&
+        !show('insights') &&
+        !show('recap') &&
+        !show('wallets') &&
+        charts.isEmpty;
+    // The recap opens on last month during the first week of a month.
+    final recapOffset = now.day <= 7 ? -1 : 0;
 
     // Phones: the plot takes whatever height is left so heading, tiles and the
     // whole trend card share the first screen (same budget as the web).
@@ -71,7 +83,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Row(
             children: [
-              const Expanded(child: Label('Dashboard · this month')),
+              Expanded(child: Label(tr('Dashboard · this month'))),
               InkWell(
                 onTap: widget.onCustomize,
                 borderRadius: BorderRadius.circular(6),
@@ -80,7 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Row(children: [
                     Icon(LucideIcons.slidersHorizontal, size: 12, color: p.muted(0.4)),
                     const SizedBox(width: 6),
-                    Text('CUSTOMIZE', style: monoStyle(p, 10, color: p.muted(0.4), letterSpacing: 1.4)),
+                    Text(tr('CUSTOMIZE'), style: monoStyle(p, 10, color: p.muted(0.4), letterSpacing: 1.4)),
                   ]),
                 ),
               ),
@@ -88,18 +100,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 4),
           Text.rich(
-            TextSpan(children: [const TextSpan(text: 'The month '), TextSpan(text: 'so far.', style: accentItalic(p, 30))]),
+            TextSpan(children: [TextSpan(text: tr('The month ')), TextSpan(text: tr('so far.'), style: accentItalic(p, 30))]),
             style: displayStyle(p, 30),
           ),
           const SizedBox(height: 14),
           if (hidden != null) ...[
             if (show('kpis')) ...[
               _KpiGrid(tiles: [
-                _Kpi('Spent', formatCurrency(spent), LucideIcons.arrowUpRight, const Color(0xFFCB453B)),
-                _Kpi('Earned', formatCurrency(earned), LucideIcons.arrowDownLeft, const Color(0xFF2E8159)),
-                _Kpi('Saved', formatCurrency(saved), LucideIcons.wallet, saved >= 0 ? const Color(0xFF3D80BC) : const Color(0xFFCB453B),
-                    sub: '$savedRate% rate'),
-                _Kpi('Avg mood', avgMood > 0 ? '$avgMood / 5' : '—', LucideIcons.smile, const Color(0xFF7A4E86)),
+                _Kpi(tr('Spent'), formatCurrency(spent), LucideIcons.arrowUpRight, const Color(0xFFCB453B)),
+                _Kpi(tr('Earned'), formatCurrency(earned), LucideIcons.arrowDownLeft, const Color(0xFF2E8159)),
+                _Kpi(tr('Saved'), formatCurrency(saved), LucideIcons.wallet, saved >= 0 ? const Color(0xFF3D80BC) : const Color(0xFFCB453B),
+                    sub: tr('{savedRate}% rate', {'savedRate': savedRate})),
+                _Kpi(tr('Avg mood'), avgMood > 0 ? digits('$avgMood / 5') : '—', LucideIcons.smile, const Color(0xFF7A4E86)),
               ]),
               const SizedBox(height: 14),
             ],
@@ -125,7 +137,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Label('Period · ${window.label}'),
+                    Label(tr('Period · {label}', {'label': window.label})),
                     const SizedBox(height: 8),
                     RangeControls(
                       range: _range,
@@ -135,6 +147,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ],
                 ),
+              ),
+            if (show('wallets')) _WalletStrip(onTap: widget.onWallets),
+            // The month (or year) in one AI read, with what to do differently next time.
+            if (show('recap'))
+              AiInsightsCard(
+                topics: const [InsightTopic.recap],
+                periods: const [Range.month, Range.year],
+                defaultPeriod: Range.month,
+                defaultOffset: recapOffset,
               ),
             // AI read of mood, money and savings — its own period selector (week / month / year).
             if (show('insights')) const AiInsightsCard(topics: [InsightTopic.mood, InsightTopic.ledger, InsightTopic.savings]),
@@ -148,16 +169,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             if (nothing)
               EmptyCard(
-                'Every dashboard section is hidden — your data is all still there.',
-                action: TextButton(onPressed: widget.onCustomize, child: Text('Choose what to show', style: TextStyle(color: p.accent))),
+                tr('Every dashboard section is hidden — your data is all still there.'),
+                action: TextButton(onPressed: widget.onCustomize, child: Text(tr('Choose what to show'), style: TextStyle(color: p.accent))),
               ),
           ],
           if (app.loading)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Center(child: Text('Loading…', style: monoStyle(p, 12, color: p.muted(0.3)))),
+              child: Center(child: Text(tr('Loading…'), style: monoStyle(p, 12, color: p.muted(0.3)))),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// What's in each wallet right now (taps through to Wallets).
+class _WalletStrip extends StatelessWidget {
+  const _WalletStrip({this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final app = context.watch<AppState>();
+    final live = app.wallets.where((w) => !w.archived).toList();
+    if (!app.walletsReady || live.isEmpty) return const SizedBox.shrink();
+    final balances = walletBalances(app.wallets, app.transactions, app.transfers, app.debts, app.debtPayments);
+    return Semantics(
+      button: true,
+      label: tr('Wallet balances'),
+      child: CardBox(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: EdgeInsets.zero,
+        child: InkWell(
+          onTap: onTap,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              for (final w in live)
+                Container(
+                  constraints: const BoxConstraints(minWidth: 124),
+                  padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 8, height: 8, decoration: BoxDecoration(color: hexColor(w.color), shape: BoxShape.circle)),
+                      const SizedBox(width: 6),
+                      ConstrainedBox(constraints: const BoxConstraints(maxWidth: 110), child: Label(tr(w.name), size: 10)),
+                    ]),
+                    const SizedBox(height: 4),
+                    Text(
+                      formatCurrency(balances[w.id] ?? 0),
+                      style: monoStyle(p, 15, weight: FontWeight.w600, color: (balances[w.id] ?? 0) < 0 ? p.expense : p.ink),
+                    ),
+                  ]),
+                ),
+            ]),
+          ),
+        ),
       ),
     );
   }

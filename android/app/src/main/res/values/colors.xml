@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Catalyst terracotta (light-theme accent) behind the adaptive icon. -->
-    <color name="ic_launcher_background">#B2462C</color>
+    <!-- Behind the launcher icon: the light logo's red-orange (its white mark is
+         mipmap-*/ic_launcher_foreground). values-night has the dark logo's colors. -->
+    <color name="ic_launcher_background">#D25038</color>
 </resources>

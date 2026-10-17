@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Home-screen widget: paper card, ink figures, terracotta add button. -->
+    <color name="widget_card">#FFFFFF</color>
+    <color name="widget_line">#1A181512</color>
+    <color name="widget_ink">#181512</color>
+    <color name="widget_muted">#A3181512</color>
+    <color name="widget_accent">#B2462C</color>
+    <string name="widget_label">Spent today</string>
+    <string name="widget_placeholder">—</string>
+    <string name="widget_open">Open Catalyst to update</string>
+    <string name="widget_add">New entry</string>
+    <string name="widget_description">Today\'s spending, with a quick add</string>
+</resources>

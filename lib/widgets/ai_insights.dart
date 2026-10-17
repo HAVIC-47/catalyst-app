@@ -15,6 +15,7 @@ import '../data/insights.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../util/range.dart';
 import 'charts.dart';
 import 'ui.dart';
@@ -30,6 +31,7 @@ const _pitch = {
   InsightTopic.mood: 'How your mood moved, what lifted or lowered it, and gentle ways to feel better.',
   InsightTopic.todo: "What's done, what's overdue or due soon, and what to tackle first.",
   InsightTopic.shopping: "What's still to buy, what it'll cost, and ways to shop smarter.",
+  InsightTopic.recap: 'The whole period in one read — money, savings, mood, bills and dhar — and what to do differently next time.',
 };
 
 const _suggestionsLabel = {
@@ -41,22 +43,36 @@ const _suggestionsLabel = {
   InsightTopic.mood: 'To feel better',
   InsightTopic.todo: 'To get through it',
   InsightTopic.shopping: 'To shop smarter',
+  InsightTopic.recap: 'For next time',
 };
 
 String _ago(DateTime t) {
   final d = DateTime.now().difference(t);
-  if (d.inMinutes < 1) return 'just now';
-  if (d.inMinutes < 60) return '${d.inMinutes} min ago';
-  if (d.inHours < 24) return '${d.inHours} h ago';
-  if (d.inDays == 1) return 'yesterday';
-  if (d.inDays < 7) return '${d.inDays} days ago';
-  return 'on ${fmt(t, 'MMM d')}';
+  if (d.inMinutes < 1) return tr('just now');
+  if (d.inMinutes < 60) return tr('{n} min ago', {'n': d.inMinutes});
+  if (d.inHours < 24) return tr('{n} h ago', {'n': d.inHours});
+  if (d.inDays == 1) return tr('yesterday');
+  if (d.inDays < 7) return tr('{n} days ago', {'n': d.inDays});
+  return tr('on {date}', {'date': fmt(t, 'MMM d')});
 }
 
 class AiInsightsCard extends StatefulWidget {
-  const AiInsightsCard({super.key, required this.topics, this.initiallyOpen = true});
+  const AiInsightsCard({
+    super.key,
+    required this.topics,
+    this.initiallyOpen = true,
+    this.periods = _periods,
+    this.defaultPeriod,
+    this.defaultOffset = 0,
+  });
 
   final List<InsightTopic> topics;
+
+  /// The periods offered (the recap is monthly or yearly only), the one it opens
+  /// on, and how many back (the recap opens on last month early in a month).
+  final List<Range> periods;
+  final Range? defaultPeriod;
+  final int defaultOffset;
 
   /// Folded or not on a first visit; after that the card remembers the user's choice.
   /// The boards start it folded, so the board stays near the top.
@@ -73,8 +89,8 @@ class AiInsightsCard extends StatefulWidget {
 
 class _AiInsightsCardState extends State<AiInsightsCard> {
   late InsightTopic _topic = widget.topics.first;
-  Range _period = Range.week;
-  int _offset = 0;
+  late Range _period = widget.defaultPeriod ?? widget.periods.first;
+  late int _offset = widget.defaultOffset;
   late bool _open = widget.initiallyOpen;
 
   String _key = ''; // what _data / _loadError belong to
@@ -117,6 +133,10 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
         InsightTopic.mood => [a.moods, a.transactions, a.journal, a.activityLogs],
         InsightTopic.todo => [a.boards, a.boardColumns, a.tickets],
         InsightTopic.shopping => [a.boards, a.boardColumns, a.tickets, a.transactions],
+        InsightTopic.recap => [
+            a.transactions, a.moods, a.budgets, a.goals, a.bills, a.tickets, //
+            a.wallets, a.transfers, a.debts, a.debtPayments,
+          ],
       };
 
   Future<void> _fetch({bool quiet = false}) async {
@@ -143,7 +163,7 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
     }
   }
 
-  static String _message(Object e) => e is InsightError ? e.message : "AI summaries aren't available right now.";
+  static String _message(Object e) => e is InsightError ? e.message : tr("AI summaries aren't available right now.");
 
   Future<void> _generate() async {
     final key = _currentKey;
@@ -209,8 +229,12 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
     final data = _key == key ? _data : null;
     final loadError = _key == key ? _loadError : null;
     final generating = _generating == key;
-    final periodName = _offset == 0 ? 'this ${_period.name}' : _win.label;
-    final title = widget.topics.length > 1 ? 'AI insights' : 'AI ${insightLabels[_topic]!.toLowerCase()} summary';
+    final periodName = _offset == 0 ? tr('this ${_period.name}') : _win.label;
+    final title = widget.topics.length > 1
+        ? tr('AI insights')
+        : _topic == InsightTopic.recap
+            ? tr('AI recap')
+            : tr('AI {topic} summary', {'topic': tr(insightLabels[_topic]!).toLowerCase()});
 
     final Widget body;
     if (loadError != null) {
@@ -218,7 +242,7 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
         Text(loadError, style: bodyStyle(p, 13.5, color: p.expense)),
         TextButton(
           onPressed: _fetch,
-          child: Text('TRY AGAIN', style: monoStyle(p, 11, color: p.accentA(0.85), letterSpacing: 1.4)),
+          child: Text(tr('TRY AGAIN'), style: monoStyle(p, 11, color: p.accentA(0.85), letterSpacing: 1.4)),
         ),
       ]);
     } else if (data == null) {
@@ -228,19 +252,21 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
         opacity: generating ? 0.5 : 1,
         child: _InsightBody(
           insight: insight,
-          suggestionsLabel: _suggestionsLabel[_topic]!,
+          suggestionsLabel: tr(_suggestionsLabel[_topic]!),
           footer: Row(children: [
             if (data.stale && !generating) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(color: p.accentA(0.12), borderRadius: BorderRadius.circular(99)),
-                child: Text('New entries since', style: bodyStyle(p, 11, weight: FontWeight.w600, color: p.accent)),
+                child: Text(tr('New entries since'), style: bodyStyle(p, 11, weight: FontWeight.w600, color: p.accent)),
               ),
               const SizedBox(width: 8),
             ],
             Expanded(
               child: Text(
-                'Written ${data.generatedAt == null ? '' : '${_ago(data.generatedAt!)} '}by Gemini · can be wrong',
+                data.generatedAt == null
+                    ? tr('Written by Gemini · can be wrong')
+                    : tr('Written {when} by Gemini · can be wrong', {'when': _ago(data.generatedAt!)}),
                 style: bodyStyle(p, 11, color: p.muted(0.45)),
               ),
             ),
@@ -250,7 +276,7 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
                   ? SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 1.6, color: p.accent))
                   : Icon(LucideIcons.refreshCw, size: 14, color: p.accentA(0.85)),
               label: Text(
-                generating ? 'WRITING…' : (data.stale ? 'UPDATE' : 'REFRESH'),
+                generating ? tr('WRITING…') : (data.stale ? tr('UPDATE') : tr('REFRESH')),
                 style: monoStyle(p, 11, color: p.accentA(0.85), letterSpacing: 1.2),
               ),
             ),
@@ -258,15 +284,15 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
         ),
       );
     } else if (data.empty) {
-      body = Text('Nothing logged for $periodName yet. Add some entries and a summary can be written.',
+      body = Text(tr('Nothing logged for {periodName} yet. Add some entries and a summary can be written.', {'periodName': periodName}),
           style: bodyStyle(p, 13.5, color: p.muted(0.5), height: 1.45));
     } else {
       body = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_pitch[_topic]!, style: bodyStyle(p, 13.5, color: p.muted(0.6), height: 1.45)),
+        Text(tr(_pitch[_topic]!), style: bodyStyle(p, 13.5, color: p.muted(0.6), height: 1.45)),
         const SizedBox(height: 12),
         PrimaryButton(
           icon: LucideIcons.sparkles,
-          label: generating ? 'Writing…' : 'Summarize $periodName',
+          label: generating ? tr('Writing…') : tr('Summarize {periodName}', {'periodName': periodName}),
           busy: generating,
           height: 44,
           onPressed: _generate,
@@ -301,7 +327,7 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
                             style: TextStyle(fontFamily: Fonts.mono, fontSize: 11, letterSpacing: 11 * 0.18, color: p.labelColor),
                           ),
                           TextSpan(
-                            text: '  · ${widget.topics.length > 1 ? '${insightLabels[_topic]} · ' : ''}${_win.label}',
+                            text: '  · ${widget.topics.length > 1 ? '${tr(insightLabels[_topic]!)} · ' : ''}${_win.label}',
                             style: monoStyle(p, 11, color: p.muted(0.4)),
                           ),
                         ]),
@@ -329,14 +355,14 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
                         options: widget.topics,
                         value: _topic,
                         compact: true,
-                        label: (t) => insightLabels[t]!,
+                        label: (t) => tr(insightLabels[t]!),
                         onChanged: (t) => setState(() => _topic = t),
                       ),
                     ),
                     const SizedBox(height: 8),
                   ],
                   RangeControls(
-                    ranges: _periods,
+                    ranges: widget.periods,
                     range: _period,
                     offset: _offset,
                     onRange: (r) => setState(() => _period = r),
@@ -450,7 +476,7 @@ class _Skeleton extends StatelessWidget {
           child: Container(height: h, margin: const EdgeInsets.only(bottom: 10), decoration: BoxDecoration(color: p.inkA(a), borderRadius: BorderRadius.circular(6))),
         );
     return Semantics(
-      label: 'Loading summary',
+      label: tr('Loading summary'),
       child: Column(children: [bar(0.65, 22, 0.07), bar(1, 13, 0.05), bar(0.85, 13, 0.05)]),
     );
   }

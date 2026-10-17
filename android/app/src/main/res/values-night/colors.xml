@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The dark logo: near-black behind its terracotta mark (mipmap-night-*).
+         Launchers that don't follow dark mode keep the icon they first showed. -->
+    <color name="ic_launcher_background">#1E1A1B</color>
+</resources>

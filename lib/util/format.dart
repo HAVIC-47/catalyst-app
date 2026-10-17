@@ -1,35 +1,53 @@
 import 'package:intl/intl.dart';
 
-/// Bangladeshi Taka, with en-IN grouping (1,00,000 style) — same as the web.
+import 'currency.dart';
+import 'i18n.dart';
+
+/// The Bangladeshi taka sign — the default currency (see currency.dart for the chosen one).
 const taka = '৳';
 
-final _grouped0 = NumberFormat('#,##,##0', 'en_IN');
-final _grouped2 = NumberFormat('#,##,##0.##', 'en_IN');
+final _indian0 = NumberFormat('#,##,##0', 'en_IN');
+final _indian2 = NumberFormat('#,##,##0.##', 'en_IN');
+final _western0 = NumberFormat('#,##0', 'en_US');
+final _western2 = NumberFormat('#,##0.##', 'en_US');
 
+/// The account currency's sign, for amount fields and labels (৳ unless changed in Settings).
+String currencySymbol() => currentCurrency.symbol.trim();
+
+/// An amount in the account's currency: ৳1,25,000 by default (lakh grouping), $125,000 for dollars.
 String formatCurrency(double value, {bool sign = false}) {
   final s = value > 0 ? (sign ? '+' : '') : (value < 0 ? '−' : '');
-  final abs = value.abs();
-  final f = abs % 1 == 0 ? _grouped0.format(abs) : _grouped2.format(abs);
-  return '$s$taka$f';
+  return digits('$s${currentCurrency.symbol}${groupNumber(value.abs())}');
 }
 
-/// Grouped number without the currency sign (e.g. "1,25,000").
-String groupNumber(double value) => value % 1 == 0 ? _grouped0.format(value) : _grouped2.format(value);
+/// Grouped number without the currency sign (e.g. "1,25,000", or "125,000") — plain
+/// digits, so it can prefill a field.
+String groupNumber(double value) {
+  final c = currentCurrency;
+  final whole = value % 1 == 0 || c.decimals == 0;
+  final f = c.indian ? (whole ? _indian0 : _indian2) : (whole ? _western0 : _western2);
+  return f.format(whole && c.decimals == 0 ? value.roundToDouble() : value);
+}
 
-/// Compact en-IN notation: 950, 43.1K, 1.4L, 2.3Cr.
+/// Short form: 950, 43.1K, 1.4L, 2.3Cr (lakh/crore currencies) or 1.4M, 2.3B.
 String compactCurrency(double value) {
   final abs = value.abs();
+  final indian = currentCurrency.indian;
   String body;
-  if (abs >= 1e7) {
+  if (indian && abs >= 1e7) {
     body = '${_trim(abs / 1e7)}Cr';
-  } else if (abs >= 1e5) {
+  } else if (indian && abs >= 1e5) {
     body = '${_trim(abs / 1e5)}L';
+  } else if (!indian && abs >= 1e9) {
+    body = '${_trim(abs / 1e9)}B';
+  } else if (!indian && abs >= 1e6) {
+    body = '${_trim(abs / 1e6)}M';
   } else if (abs >= 1e3) {
     body = '${_trim(abs / 1e3)}K';
   } else {
     body = _trim(abs);
   }
-  return '${value < 0 ? '−' : ''}$taka$body';
+  return digits('${value < 0 ? '−' : ''}${currentCurrency.symbol}$body');
 }
 
 String _trim(double v) {
@@ -59,7 +77,8 @@ String nowTime() {
   return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }
 
-String fmt(DateTime d, String pattern) => DateFormat(pattern, 'en_US').format(d);
+/// A date in the app's language (Bengali month names and digits in Bangla).
+String fmt(DateTime d, String pattern) => DateFormat(pattern, isBangla ? 'bn' : 'en_US').format(d);
 
 DateTime startOfWeek(DateTime d) => DateTime(d.year, d.month, d.day - d.weekday % 7); // Sunday start
 DateTime endOfWeek(DateTime d) => startOfWeek(d).add(const Duration(days: 6));

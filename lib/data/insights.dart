@@ -1,7 +1,7 @@
 // AI summaries — the web app's /api/ai-insights (src/lib/insights.ts there).
 // The server reads the user's own rows and asks Gemini for a short summary and
-// suggestions; the app sends only the topic, period and its login token. The
-// Gemini key never leaves the server.
+// suggestions; the app sends only the topic, period, language and its login
+// token. The Gemini key never leaves the server.
 import 'dart:async';
 import 'dart:convert';
 
@@ -10,9 +10,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../util/range.dart';
 
-enum InsightTopic { journal, ledger, goals, savings, bills, mood, todo, shopping }
+enum InsightTopic { journal, ledger, goals, savings, bills, mood, todo, shopping, recap }
 
 /// Tab label for each topic (same as the web).
 const insightLabels = {
@@ -24,6 +25,7 @@ const insightLabels = {
   InsightTopic.mood: 'Mood',
   InsightTopic.todo: 'To-do',
   InsightTopic.shopping: 'To-buy',
+  InsightTopic.recap: 'Recap',
 };
 
 class Insight {
@@ -84,7 +86,7 @@ Future<InsightResult> requestInsight({
   final auth = Supabase.instance.client.auth;
   var session = auth.currentSession;
   if (session != null && session.isExpired) session = (await auth.refreshSession()).session;
-  if (session == null) throw const InsightError('Log in again to use AI summaries.');
+  if (session == null) throw InsightError(tr('Log in again to use AI summaries.'));
 
   http.Response res;
   try {
@@ -98,13 +100,14 @@ Future<InsightResult> requestInsight({
             'start': start,
             'today': toDateKey(DateTime.now()),
             'mode': generate ? 'generate' : 'cached',
+            'lang': appLang, // the summary is written in the app's language
           }),
         )
         .timeout(Duration(seconds: generate ? 75 : 20));
   } on TimeoutException {
-    throw InsightError(generate ? 'The AI took too long — try again.' : 'Couldn\'t load the summary — try again.');
+    throw InsightError(generate ? tr('The AI took too long — try again.') : tr('Couldn\'t load the summary — try again.'));
   } catch (_) {
-    throw const InsightError('No connection — try again.');
+    throw InsightError(tr('No connection — try again.'));
   }
   Map<String, dynamic>? data;
   try {
@@ -113,7 +116,7 @@ Future<InsightResult> requestInsight({
     data = null;
   }
   if (res.statusCode != 200 || data == null) {
-    throw InsightError(data?['error'] as String? ?? 'AI summaries aren\'t available right now.');
+    throw InsightError(data?['error'] as String? ?? tr('AI summaries aren\'t available right now.'));
   }
   return InsightResult.fromJson(data);
 }

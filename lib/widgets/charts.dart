@@ -9,6 +9,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../util/math.dart';
 import '../util/range.dart';
 import 'mood_face.dart';
@@ -49,19 +50,19 @@ class RangeControls extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            HairlineIconButton(icon: LucideIcons.chevronLeft, size: 34, tooltip: 'Previous period', onPressed: () => onOffset(offset - 1)),
+            HairlineIconButton(icon: LucideIcons.chevronLeft, size: 34, tooltip: tr('Previous period'), onPressed: () => onOffset(offset - 1)),
             const SizedBox(width: 4),
             HairlineButton(
               height: 34,
               padding: const EdgeInsets.symmetric(horizontal: 10),
               onPressed: offset == 0 ? null : () => onOffset(0),
-              child: Text('NOW', style: monoStyle(p, 10.5, color: p.muted(0.6), letterSpacing: 1.2)),
+              child: Text(tr('NOW'), style: monoStyle(p, 10.5, color: p.muted(0.6), letterSpacing: 1.2)),
             ),
             const SizedBox(width: 4),
             HairlineIconButton(
               icon: LucideIcons.chevronRight,
               size: 34,
-              tooltip: 'Next period',
+              tooltip: tr('Next period'),
               onPressed: offset >= 0 ? null : () => onOffset(math.min(0, offset + 1)),
             ),
           ],
@@ -207,13 +208,13 @@ class CategoryDonut extends StatelessWidget {
       if (t.kind != kind || !inRange(t.occurredOn, window.startKey, window.endKey)) continue;
       totals[t.categoryName] = (totals[t.categoryName] ?? 0) + t.amount;
     }
-    final slices = [for (final e in totals.entries) _Slice(e.key, e.value, colorOf[e.key] ?? _fallback)]
+    final slices = [for (final e in totals.entries) _Slice(tr(e.key), e.value, colorOf[e.key] ?? _fallback)]
       ..sort((a, b) => b.value.compareTo(a.value));
-    if (slices.isEmpty) return _NoData(kind == Kind.expense ? 'No spending this period.' : 'No income this period.');
+    if (slices.isEmpty) return _NoData(kind == Kind.expense ? tr('No spending this period.') : tr('No income this period.'));
     final total = slices.fold<double>(0, (s, x) => s + x.value);
     return _DonutBlock(
       slices: slices.take(6).toList(),
-      centerLabel: kind == Kind.expense ? 'Spent' : 'Earned',
+      centerLabel: kind == Kind.expense ? tr('Spent') : tr('Earned'),
       centerValue: formatCurrency(total),
       legendValue: (s) => formatCurrency(s.value),
     );
@@ -238,13 +239,13 @@ class MoodDonut extends StatelessWidget {
       for (final p in moodPresets)
         if ((counts[p.value] ?? 0) > 0) _Slice(p.label, (counts[p.value] ?? 0).toDouble(), p.color, mood: p.value),
     ];
-    if (slices.isEmpty) return const _NoData('No moods logged this period.');
+    if (slices.isEmpty) return _NoData(tr('No moods logged this period.'));
     final total = slices.fold<double>(0, (s, x) => s + x.value);
     return _DonutBlock(
       slices: slices,
-      centerLabel: 'Logs',
-      centerValue: total.toInt().toString(),
-      legendValue: (s) => '${s.value.toInt()} ${s.value == 1 ? 'log' : 'logs'}',
+      centerLabel: tr('Logs'),
+      centerValue: digits(total.toInt().toString()),
+      legendValue: (s) => trn(s.value.toInt(), '{n} log', '{n} logs'),
     );
   }
 }
@@ -275,17 +276,15 @@ class SavingsDonut extends StatelessWidget {
     }
     const addedColor = Color(0xFF3D80BC), brokenColor = Color(0xFFCB453B);
     final slices = [
-      if (added > 0) _Slice('Added', added, addedColor),
-      if (broken > 0) _Slice('Broken', broken, brokenColor),
+      if (added > 0) _Slice(tr('Added'), added, addedColor),
+      if (broken > 0) _Slice(tr('Broken'), broken, brokenColor),
     ];
-    if (slices.isEmpty) return const _NoData('No saving activity this period.');
+    if (slices.isEmpty) return _NoData(tr('No saving activity this period.'));
     final net = added - broken;
     return _DonutBlock(
       slices: slices,
-      legend: const [_Slice('Added', 0, addedColor), _Slice('Broken', 0, brokenColor)]
-          .map((s) => _Slice(s.name, s.name == 'Added' ? added : broken, s.color))
-          .toList(),
-      centerLabel: 'Net',
+      legend: [_Slice(tr('Added'), added, addedColor), _Slice(tr('Broken'), broken, brokenColor)],
+      centerLabel: tr('Net'),
       centerValue: formatCurrency(net, sign: true),
       centerColor: net >= 0 ? p.saving : p.expense,
       legendValue: (s) => formatCurrency(s.value),
@@ -337,7 +336,7 @@ class HBars extends StatelessWidget {
                             decoration: BoxDecoration(color: b.$3, borderRadius: BorderRadius.circular(3)),
                           ),
                           const SizedBox(width: 6),
-                          Text('${b.$2}', style: monoStyle(p, 11, color: p.muted(0.5))),
+                          Text(digits('${b.$2}'), style: monoStyle(p, 11, color: p.muted(0.5))),
                         ],
                       );
                     },
@@ -396,9 +395,9 @@ class MoodTagBars extends StatelessWidget {
       }
     }
     final entries = counts.entries.toList();
-    final bars = [for (final (i, e) in entries.indexed) (e.key, e.value, _tagColors[i % _tagColors.length])]
+    final bars = [for (final (i, e) in entries.indexed) (tr('${e.key}|tag'), e.value, _tagColors[i % _tagColors.length])]
       ..sort((a, b) => b.$2.compareTo(a.$2));
-    if (bars.isEmpty) return const _NoData('No mood tags logged this period.');
+    if (bars.isEmpty) return _NoData(tr('No mood tags logged this period.'));
     return HBars(bars: bars.take(10).toList());
   }
 }
@@ -418,9 +417,9 @@ class CategoryBars extends StatelessWidget {
       if (t.kind == Kind.saving || !inRange(t.occurredOn, window.startKey, window.endKey)) continue;
       counts[t.categoryName] = (counts[t.categoryName] ?? 0) + 1;
     }
-    final bars = [for (final e in counts.entries) (e.key, e.value, colorOf[e.key] ?? _fallback)]
+    final bars = [for (final e in counts.entries) (tr(e.key), e.value, colorOf[e.key] ?? _fallback)]
       ..sort((a, b) => b.$2.compareTo(a.$2));
-    if (bars.isEmpty) return const _NoData('No transactions this period.');
+    if (bars.isEmpty) return _NoData(tr('No transactions this period.'));
     return HBars(bars: bars.take(10).toList());
   }
 }
@@ -571,16 +570,16 @@ class _TrendCardState extends State<TrendCard> {
       children: [
         Row(
           children: [
-            Expanded(child: Label('Trend · $periodLabel')),
-            Text('r = ${r.toStringAsFixed(2)}', style: monoStyle(p, 11, color: p.muted(0.4))),
+            Expanded(child: Label(tr('Trend · {periodLabel}', {'periodLabel': periodLabel}))),
+            Text('r = ${digits(r.toStringAsFixed(2))}', style: monoStyle(p, 11, color: p.muted(0.4))),
           ],
         ),
         const SizedBox(height: 4),
         Text.rich(
           TextSpan(children: [
-            const TextSpan(text: 'Mood '),
+            TextSpan(text: tr('Mood ')),
             TextSpan(text: '×', style: accentItalic(p, 20).copyWith(color: p.muted(0.5))),
-            const TextSpan(text: ' money'),
+            TextSpan(text: tr(' money')),
           ]),
           style: displayStyle(p, 20),
         ),
@@ -651,10 +650,10 @@ class _TrendTip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(point.label, style: monoStyle(p, 11, color: p.muted(0.5))),
-          Text('Net ${formatCurrency(point.net, sign: true)}',
+          Text(tr('Net {amount}', {'amount': formatCurrency(point.net, sign: true)}),
               style: bodyStyle(p, 12, color: point.net >= 0 ? p.income : p.expense)),
-          if (point.saving > 0) Text('Saving +${formatCurrency(point.saving)}', style: bodyStyle(p, 12, color: p.saving)),
-          Text('Mood ${point.mood?.toString() ?? '—'}${point.mood != null ? ' / 5' : ''}',
+          if (point.saving > 0) Text(tr('Saving +{amount}', {'amount': formatCurrency(point.saving)}), style: bodyStyle(p, 12, color: p.saving)),
+          Text(point.mood == null ? tr('Mood —') : tr('Mood {value} / 5', {'value': point.mood!}),
               style: bodyStyle(p, 12, color: const Color(0xFF9268A0))),
         ],
       ),
@@ -729,7 +728,7 @@ class _TrendPainter extends CustomPainter {
       _text(canvas, compactCurrency(t), Offset(g.left - 6, y(t)), axisText, align: TextAlign.right);
     }
     for (var m = 1; m <= 5; m++) {
-      _text(canvas, '$m', Offset(size.width - g.right + 7, ym(m.toDouble())), const Color(0xFF9268A0));
+      _text(canvas, digits('$m'), Offset(size.width - g.right + 7, ym(m.toDouble())), const Color(0xFF9268A0));
     }
 
     // Selected band highlight.

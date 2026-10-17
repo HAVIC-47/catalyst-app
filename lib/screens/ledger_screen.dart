@@ -1,6 +1,7 @@
 // Ledger — port of the web's /app/transactions: day-grouped transactions with
-// search (note, category, place, amount, date words) and filters (type, period
-// or custom range, category, amount range) plus totals for the filtered set.
+// search (note, category, place, wallet, amount, date words) and filters (type,
+// period or custom range, category, wallet, amount range) plus totals for the
+// filtered set.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,8 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
+import '../util/money.dart';
 import '../util/range.dart';
 import '../widgets/ai_insights.dart';
 import '../widgets/ui.dart';
@@ -25,7 +28,7 @@ const _periodLabels = {
   _Period.month: 'This month',
   _Period.year: 'This year',
   _Period.custom: 'Custom',
-};
+}; // shown through tr()
 
 class LedgerScreen extends StatefulWidget {
   const LedgerScreen({super.key});
@@ -41,6 +44,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
   _Period _period = _Period.all;
   DateTime? _from, _to;
   String _category = '';
+  String _wallet = ''; // wallet id, '' = all
   final _min = TextEditingController(), _max = TextEditingController();
 
   @override
@@ -63,6 +67,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
       (_kind != null ? 1 : 0) +
       (_period != _Period.all ? 1 : 0) +
       (_category.isNotEmpty ? 1 : 0) +
+      (_wallet.isNotEmpty ? 1 : 0) +
       (_min.text.trim().isNotEmpty || _max.text.trim().isNotEmpty ? 1 : 0);
 
   void _resetFilters() => setState(() {
@@ -70,6 +75,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
         _period = _Period.all;
         _from = _to = null;
         _category = '';
+        _wallet = '';
         _min.clear();
         _max.clear();
       });
@@ -79,12 +85,13 @@ class _LedgerScreenState extends State<LedgerScreen> {
     _query.clear();
   }
 
-  // Searchable text: note, category, place, kind, amount (raw + grouped) and the
-  // spelled-out date ("monday october 12 2026").
-  String _hay(Txn t) => [
+  // Searchable text: note, category, place, wallet, kind, amount (raw + grouped)
+  // and the spelled-out date ("monday october 12 2026").
+  String _hay(Txn t, String wallet) => [
         t.note,
         t.categoryName,
         t.place,
+        wallet,
         t.kind.name,
         t.amount % 1 == 0 ? t.amount.toInt().toString() : t.amount.toString(),
         groupNumber(t.amount),
@@ -110,15 +117,18 @@ class _LedgerScreenState extends State<LedgerScreen> {
     }
     final min = double.tryParse(_min.text.trim());
     final max = double.tryParse(_max.text.trim());
+    final wallets = app.walletsReady ? app.wallets : const <Wallet>[];
+    final walletOf = walletNamer(wallets);
 
     final filtered = app.transactions.where((t) {
       if (_kind != null && t.kind != _kind) return false;
       if (_category.isNotEmpty && t.categoryName != _category) return false;
+      if (_wallet.isNotEmpty && (t.kind == Kind.saving || walletOf(t)?.id != _wallet)) return false;
       if (win != null && !inRange(t.occurredOn, win.$1, win.$2)) return false;
       if (min != null && t.amount < min) return false;
       if (max != null && t.amount > max) return false;
       if (words.isNotEmpty) {
-        final h = _hay(t);
+        final h = _hay(t, walletOf(t)?.name ?? '');
         if (!words.every(h.contains)) return false;
       }
       return true;
@@ -160,11 +170,11 @@ class _LedgerScreenState extends State<LedgerScreen> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           PageHeader(
-            kicker: 'Ledger · ${app.transactions.length} total',
-            title: 'Trans',
-            accent: 'actions.',
+            kicker: tr('Ledger · {n} total', {'n': app.transactions.length}),
+            title: tr('Trans'),
+            accent: tr('actions.'),
             joined: true,
-            trailing: PrimaryButton(label: '+ Add', height: 42, onPressed: () => openEntry(context)),
+            trailing: PrimaryButton(label: tr('+ Add'), height: 42, onPressed: () => openEntry(context)),
           ),
           const AiInsightsCard(topics: [InsightTopic.ledger]),
           Row(
@@ -174,12 +184,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
                   controller: _query,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
-                    hintText: 'Search note, category, place, amount…',
+                    hintText: tr('Search note, category, place, amount…'),
                     prefixIcon: Icon(LucideIcons.search, size: 16, color: p.muted(0.35)),
                     suffixIcon: _query.text.isEmpty
                         ? null
                         : IconButton(
-                            tooltip: 'Clear search',
+                            tooltip: tr('Clear search'),
                             icon: Icon(LucideIcons.x, size: 16, color: p.muted(0.4)),
                             onPressed: _query.clear,
                           ),
@@ -194,7 +204,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                 fill: _showFilters || _activeFilters > 0 ? p.accentA(0.08) : null,
                 onPressed: () => setState(() => _showFilters = !_showFilters),
                 child: Semantics(
-                  label: 'Filters',
+                  label: tr('Filters'),
                   child: Row(children: [
                     Icon(LucideIcons.slidersHorizontal, size: 16, color: _showFilters || _activeFilters > 0 ? p.accent : p.muted(0.6)),
                     if (_activeFilters > 0) ...[
@@ -202,7 +212,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                         decoration: BoxDecoration(color: p.accent, borderRadius: BorderRadius.circular(9)),
-                        child: Text('$_activeFilters', style: monoStyle(p, 10, color: p.onAccent)),
+                        child: Text(digits('$_activeFilters'), style: monoStyle(p, 10, color: p.onAccent)),
                       ),
                     ],
                   ]),
@@ -217,12 +227,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   FieldBlock(
-                    label: 'Type',
+                    label: tr('Type'),
                     child: Wrap(spacing: 6, runSpacing: 6, children: [
-                      OptionChip(label: 'All', selected: _kind == null, onTap: () => setState(() => _kind = null)),
+                      OptionChip(label: tr('All'), selected: _kind == null, onTap: () => setState(() => _kind = null)),
                       for (final k in Kind.values)
                         OptionChip(
-                          label: '${k.name[0].toUpperCase()}${k.name.substring(1)}',
+                          label: tr('${k.name[0].toUpperCase()}${k.name.substring(1)}'),
                           selected: _kind == k,
                           onTap: () => setState(() => _kind = k),
                         ),
@@ -230,20 +240,20 @@ class _LedgerScreenState extends State<LedgerScreen> {
                   ),
                   const SizedBox(height: 16),
                   FieldBlock(
-                    label: 'Period',
+                    label: tr('Period'),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Wrap(spacing: 6, runSpacing: 6, children: [
                           for (final per in _Period.values)
-                            OptionChip(label: _periodLabels[per]!, selected: _period == per, onTap: () => setState(() => _period = per)),
+                            OptionChip(label: tr(_periodLabels[per]!), selected: _period == per, onTap: () => setState(() => _period = per)),
                         ]),
                         if (_period == _Period.custom) ...[
                           const SizedBox(height: 8),
                           Row(children: [
-                            Expanded(child: DateButton(value: _from, hint: 'From', onPicked: (d) => setState(() => _from = d))),
+                            Expanded(child: DateButton(value: _from, hint: tr('From'), onPicked: (d) => setState(() => _from = d))),
                             Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text('–', style: TextStyle(color: p.muted(0.3)))),
-                            Expanded(child: DateButton(value: _to, hint: 'To', onPicked: (d) => setState(() => _to = d))),
+                            Expanded(child: DateButton(value: _to, hint: tr('To'), onPicked: (d) => setState(() => _to = d))),
                           ]),
                         ],
                       ],
@@ -251,23 +261,35 @@ class _LedgerScreenState extends State<LedgerScreen> {
                   ),
                   const SizedBox(height: 16),
                   FieldBlock(
-                    label: 'Category',
+                    label: tr('Category'),
                     child: AppDropdown(
                       value: _category,
                       items: ['', ...catOptions],
-                      labelOf: (v) => v.isEmpty ? 'All categories' : v,
+                      labelOf: (v) => v.isEmpty ? tr('All categories') : tr(v),
                       onChanged: (v) => setState(() => _category = v),
                     ),
                   ),
+                  if (wallets.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    FieldBlock(
+                      label: tr('Wallet'),
+                      child: AppDropdown(
+                        value: _wallet,
+                        items: ['', for (final w in wallets) w.id],
+                        labelOf: (id) => id.isEmpty ? tr('All wallets') : tr(wallets.firstWhere((w) => w.id == id).name),
+                        onChanged: (v) => setState(() => _wallet = v),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   FieldBlock(
-                    label: 'Amount (৳)',
+                    label: tr('Amount ({x0})', {'x0': currencySymbol()}),
                     child: Row(children: [
                       Expanded(
                         child: TextField(
                           controller: _min,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(hintText: 'Min'),
+                          decoration: InputDecoration(hintText: tr('Min')),
                         ),
                       ),
                       Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text('–', style: TextStyle(color: p.muted(0.3)))),
@@ -275,7 +297,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                         child: TextField(
                           controller: _max,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(hintText: 'Max'),
+                          decoration: InputDecoration(hintText: tr('Max')),
                         ),
                       ),
                     ]),
@@ -287,7 +309,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       alignment: Alignment.centerRight,
                       child: TextButton(
                         onPressed: _resetFilters,
-                        child: Text('RESET FILTERS', style: monoStyle(p, 11, color: p.accentA(0.85), letterSpacing: 1.4)),
+                        child: Text(tr('RESET FILTERS'), style: monoStyle(p, 11, color: p.accentA(0.85), letterSpacing: 1.4)),
                       ),
                     ),
                   ],
@@ -303,25 +325,25 @@ class _LedgerScreenState extends State<LedgerScreen> {
                 children: [
                   Expanded(
                     child: Wrap(spacing: 12, runSpacing: 4, children: [
-                      Text('${filtered.length} of ${app.transactions.length}', style: monoStyle(p, 12, color: p.muted(0.55))),
-                      if (tIn > 0) Text('In ${formatCurrency(tIn)}', style: monoStyle(p, 12, color: p.income)),
-                      if (tOut > 0) Text('Out ${formatCurrency(tOut)}', style: monoStyle(p, 12, color: p.expense)),
-                      if (tSave > 0) Text('Saved ${formatCurrency(tSave)}', style: monoStyle(p, 12, color: p.saving)),
-                      Text('Net ${formatCurrency(tIn - tOut, sign: true)}', style: monoStyle(p, 12, color: tIn - tOut >= 0 ? p.income : p.expense)),
+                      Text(tr('{n} of {n2}', {'n': filtered.length, 'n2': app.transactions.length}), style: monoStyle(p, 12, color: p.muted(0.55))),
+                      if (tIn > 0) Text(tr('In {amount}', {'amount': formatCurrency(tIn)}), style: monoStyle(p, 12, color: p.income)),
+                      if (tOut > 0) Text(tr('Out {amount}', {'amount': formatCurrency(tOut)}), style: monoStyle(p, 12, color: p.expense)),
+                      if (tSave > 0) Text(tr('Saved {amount}', {'amount': formatCurrency(tSave)}), style: monoStyle(p, 12, color: p.saving)),
+                      Text(tr('Net {amount}', {'amount': formatCurrency(tIn - tOut, sign: true)}), style: monoStyle(p, 12, color: tIn - tOut >= 0 ? p.income : p.expense)),
                     ]),
                   ),
                   TextButton(
                     onPressed: _clearAll,
-                    child: Text('CLEAR', style: monoStyle(p, 11, color: p.accentA(0.85), letterSpacing: 1.4)),
+                    child: Text(tr('CLEAR'), style: monoStyle(p, 11, color: p.accentA(0.85), letterSpacing: 1.4)),
                   ),
                 ],
               ),
             ),
           if (!app.loading && app.transactions.isEmpty)
-            const EmptyCard('No transactions yet. Tap + Add or a calendar day.')
+            EmptyCard(tr('No transactions yet. Tap + Add or a calendar day.'))
           else if (!app.loading && filtered.isEmpty)
-            EmptyCard('Nothing matches.', action: TextButton(onPressed: _clearAll, child: Text('Clear search & filters', style: TextStyle(color: p.accent)))),
-          for (final day in days) _DayGroup(day: day, items: groups[day]!, colorOf: colorOf),
+            EmptyCard(tr('Nothing matches.'), action: TextButton(onPressed: _clearAll, child: Text(tr('Clear search & filters'), style: TextStyle(color: p.accent)))),
+          for (final day in days) _DayGroup(day: day, items: groups[day]!, colorOf: colorOf, walletOf: walletOf),
         ],
       ),
     );
@@ -329,11 +351,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
 }
 
 class _DayGroup extends StatelessWidget {
-  const _DayGroup({required this.day, required this.items, required this.colorOf});
+  const _DayGroup({required this.day, required this.items, required this.colorOf, required this.walletOf});
 
   final String day;
   final List<Txn> items;
   final Map<String, Color> colorOf;
+  final Wallet? Function(Txn) walletOf;
 
   @override
   Widget build(BuildContext context) {
@@ -358,10 +381,10 @@ class _DayGroup extends StatelessWidget {
               children: [
                 Text(fmt(fromDateKey(day), 'EEE · MMM d, yyyy').toUpperCase(), style: monoStyle(p, 11.5, color: p.muted(0.45), letterSpacing: 1.4)),
                 Wrap(spacing: 10, children: [
-                  if (dIn > 0) Text('In ${formatCurrency(dIn)}', style: monoStyle(p, 11.5, color: p.income)),
-                  if (dOut > 0) Text('Out ${formatCurrency(dOut)}', style: monoStyle(p, 11.5, color: p.expense)),
-                  if (dSave > 0) Text('Saved ${formatCurrency(dSave)}', style: monoStyle(p, 11.5, color: p.saving)),
-                  Text('Net ${formatCurrency(dNet, sign: true)}', style: monoStyle(p, 11.5, color: dNet >= 0 ? p.income : p.expense)),
+                  if (dIn > 0) Text(tr('In {amount}', {'amount': formatCurrency(dIn)}), style: monoStyle(p, 11.5, color: p.income)),
+                  if (dOut > 0) Text(tr('Out {amount}', {'amount': formatCurrency(dOut)}), style: monoStyle(p, 11.5, color: p.expense)),
+                  if (dSave > 0) Text(tr('Saved {amount}', {'amount': formatCurrency(dSave)}), style: monoStyle(p, 11.5, color: p.saving)),
+                  Text(tr('Net {amount}', {'amount': formatCurrency(dNet, sign: true)}), style: monoStyle(p, 11.5, color: dNet >= 0 ? p.income : p.expense)),
                 ]),
               ],
             ),
@@ -372,16 +395,26 @@ class _DayGroup extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
               child: Row(
                 children: [
-                  CategoryBadge(name: t.categoryName, color: colorOf[t.categoryName] ?? const Color(0xFF7A746A)),
+                  CategoryBadge(name: tr(t.categoryName), color: colorOf[t.categoryName] ?? const Color(0xFF7A746A)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(t.note.isEmpty ? t.categoryName : t.note,
+                        Text(t.note.isEmpty ? tr(t.categoryName) : t.note,
                             maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 14, color: p.muted(0.85))),
                         Row(children: [
-                          Text(t.categoryName, style: bodyStyle(p, 11.5, color: p.muted(0.4))),
+                          // Category and wallet give way (ellipsis) before the row overflows.
+                          Flexible(
+                            child: Text(
+                              t.kind != Kind.saving && walletOf(t) != null
+                                  ? '${tr(t.categoryName)} · ${tr(walletOf(t)!.name)}'
+                                  : tr(t.categoryName),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: bodyStyle(p, 11.5, color: p.muted(0.4)),
+                            ),
+                          ),
                           if (t.place.isNotEmpty) ...[
                             const SizedBox(width: 6),
                             Icon(LucideIcons.mapPin, size: 11, color: p.muted(0.4)),
@@ -403,13 +436,13 @@ class _DayGroup extends StatelessWidget {
                   ),
                   const SizedBox(width: 2),
                   IconButton(
-                    tooltip: 'Edit',
+                    tooltip: tr('Edit'),
                     visualDensity: VisualDensity.compact,
                     onPressed: () => openTxnEditor(context, t),
                     icon: Icon(LucideIcons.pencil, size: 16, color: p.muted(0.45)),
                   ),
                   TrashButton(onPressed: () async {
-                    if (!await confirm(context, 'Delete this transaction?')) return;
+                    if (!await confirm(context, tr('Delete this transaction?'))) return;
                     try {
                       await app.removeMoney(t.id);
                     } catch (e) {

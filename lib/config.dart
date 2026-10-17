@@ -9,6 +9,15 @@ const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 /// lives only on that server — the app sends the user's Supabase session token.
 const apiBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'https://catalyst-hishab.vercel.app');
 
+/// Where Supabase sends people back into the app after a password-reset email or
+/// Google sign-in. Add it to Supabase → Authentication → URL Configuration →
+/// Redirect URLs.
+const authRedirect = 'com.havic47.catalyst://login-callback';
+
+/// "Continue with Google" — turn on once the Google provider is set up in
+/// Supabase: add "GOOGLE_SIGN_IN": "on" to env.json (or --dart-define).
+const googleSignIn = String.fromEnvironment('GOOGLE_SIGN_IN') == 'on';
+
 /// Test-only: exposes the semantics tree so browser automation can drive the
 /// Flutter-web build. Never set for the APK.
 const testSemantics = bool.fromEnvironment('TEST_SEMANTICS');

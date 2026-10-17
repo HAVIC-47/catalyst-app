@@ -1,13 +1,14 @@
 // Shared time-window helpers for dashboard charts (port of web src/lib/range.ts).
 import 'format.dart';
+import 'i18n.dart';
 
 enum Range { day, week, month, year }
 
 String rangeName(Range r) => switch (r) {
-      Range.day => 'Day',
-      Range.week => 'Week',
-      Range.month => 'Month',
-      Range.year => 'Year',
+      Range.day => tr('Day'),
+      Range.week => tr('Week'),
+      Range.month => tr('Month'),
+      Range.year => tr('Year'),
     };
 
 class Window {
@@ -33,7 +34,7 @@ Window rangeWindow(Range range, int offset) {
       return Window(toDateKey(startOfMonth(a)), toDateKey(endOfMonth(a)), fmt(a, 'MMMM yyyy'));
     case Range.year:
       final y = now.year + offset;
-      return Window('$y-01-01', '$y-12-31', '$y');
+      return Window('$y-01-01', '$y-12-31', digits('$y'));
   }
 }
 

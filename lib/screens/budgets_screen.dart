@@ -9,6 +9,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/format.dart';
+import '../util/i18n.dart';
 import '../widgets/ui.dart';
 
 class BudgetsScreen extends StatefulWidget {
@@ -75,12 +76,12 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           PageHeader(
-            kicker: 'Budgets · this month',
-            title: 'Spend',
-            accent: 'limits.',
+            kicker: tr('Budgets · this month'),
+            title: tr('Spend'),
+            accent: tr('limits.'),
             below: app.budgets.isEmpty
                 ? null
-                : Text('${formatCurrency(totalSpent)} of ${formatCurrency(totalBudget)} used', style: monoStyle(p, 13, color: p.muted(0.45))),
+                : Text(tr('{amount} of {amount2} used', {'amount': formatCurrency(totalSpent), 'amount2': formatCurrency(totalBudget)}), style: monoStyle(p, 13, color: p.muted(0.45))),
           ),
           // Category, limit and button each get their own row on phones.
           CardBox(
@@ -89,9 +90,9 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 FieldBlock(
-                  label: 'Category',
+                  label: tr('Category'),
                   child: available.isEmpty
-                      ? Text('All categories budgeted', style: bodyStyle(p, 14, color: p.muted(0.5)))
+                      ? Text(tr('All categories budgeted'), style: bodyStyle(p, 14, color: p.muted(0.5)))
                       : AppDropdown(
                           value: available.any((c) => c.id == _catId) ? _catId : available.first.id,
                           items: [for (final c in available) c.id],
@@ -100,19 +101,19 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                         ),
                 ),
                 const SizedBox(height: 12),
-                FieldBlock(label: 'Monthly limit', child: AmountField(controller: _amount, onSubmitted: (_) => add())),
+                FieldBlock(label: tr('Monthly limit'), child: AmountField(controller: _amount, onSubmitted: (_) => add())),
                 const SizedBox(height: 14),
                 PrimaryButton(
                   expand: true,
                   icon: LucideIcons.plus,
-                  label: 'Set budget',
+                  label: tr('Set budget'),
                   busy: _busy,
                   onPressed: available.isEmpty || amt == null ? null : add,
                 ),
               ],
             ),
           ),
-          if (!app.loading && app.budgets.isEmpty) const EmptyCard('No budgets yet. Pick a category and set a monthly limit.'),
+          if (!app.loading && app.budgets.isEmpty) EmptyCard(tr('No budgets yet. Pick a category and set a monthly limit.')),
           for (final b in app.budgets) _BudgetCard(budget: b, spent: spentByCat[b.categoryName] ?? 0),
         ],
       ),
@@ -174,13 +175,13 @@ class _BudgetCardState extends State<_BudgetCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [
-            CategoryBadge(name: b.categoryName, color: catColor, size: 28),
+            CategoryBadge(name: tr(b.categoryName), color: catColor, size: 28),
             const SizedBox(width: 10),
-            Expanded(child: Text(b.categoryName, style: bodyStyle(p, 14, weight: FontWeight.w500, color: p.muted(0.85)))),
+            Expanded(child: Text(tr(b.categoryName), style: bodyStyle(p, 14, weight: FontWeight.w500, color: p.muted(0.85)))),
             TrashButton(
-              tooltip: 'Delete budget',
+              tooltip: tr('Delete budget'),
               onPressed: () async {
-                if (!await confirm(context, 'Delete this budget?')) return;
+                if (!await confirm(context, tr('Delete this budget?'))) return;
                 try {
                   await app.removeBudget(b.id);
                 } catch (e) {
@@ -196,9 +197,9 @@ class _BudgetCardState extends State<_BudgetCard> {
           ),
           const SizedBox(height: 8),
           Row(children: [
-            Text('${formatCurrency(widget.spent)} spent', style: monoStyle(p, 12, color: over ? p.expense : p.muted(0.55))),
+            Text(tr('{amount} spent', {'amount': formatCurrency(widget.spent)}), style: monoStyle(p, 12, color: over ? p.expense : p.muted(0.55))),
             const Spacer(),
-            Text('of ', style: monoStyle(p, 12, color: p.muted(0.4))),
+            Text(tr('of '), style: monoStyle(p, 12, color: p.muted(0.4))),
             SizedBox(
               width: 96,
               child: TextField(
@@ -208,14 +209,14 @@ class _BudgetCardState extends State<_BudgetCard> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onSubmitted: (_) => _save(),
                 style: monoStyle(p, 12, color: p.muted(0.7)),
-                decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6), prefixText: '৳'),
+                decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), prefixText: currencySymbol()),
               ),
             ),
           ]),
           if (over)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text('Over by ${formatCurrency(widget.spent - b.amount)}', style: monoStyle(p, 11, color: p.expense)),
+              child: Text(tr('Over by {amount}', {'amount': formatCurrency(widget.spent - b.amount)}), style: monoStyle(p, 11, color: p.expense)),
             ),
         ],
       ),
