@@ -10,8 +10,8 @@ import io.flutter.plugin.common.MethodChannel
 // - catalyst/sms: a bKash / Nagad message the user shared to the app (Messages →
 //   press and hold → Share → Catalyst). Only that text arrives — the app has no
 //   SMS permission and reads nothing else; it's parsed on the phone.
-// - catalyst/widget: the home-screen widget's figures, and the widget's
-//   "quick add" tap handed to the app.
+// - catalyst/widget: the home-screen widgets' figures (Widgets.kt), and a widget
+//   tap handed to the app: "add", "open:<section>" or "mood:<1-5>".
 class MainActivity : FlutterActivity() {
     private var smsChannel: MethodChannel? = null
     private var widgetChannel: MethodChannel? = null
@@ -20,14 +20,15 @@ class MainActivity : FlutterActivity() {
     private var restored = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Brought back after Android closed it: the share it was opened with is old news.
+        // Brought back after Android closed it: the share or widget tap it was opened
+        // with is old news.
         restored = savedInstanceState != null
         super.onCreate(savedInstanceState)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        launchAction = actionOf(intent)
+        launchAction = if (restored) null else actionOf(intent)
         sharedText = if (restored) null else textOf(intent)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
 
@@ -47,7 +48,7 @@ class MainActivity : FlutterActivity() {
             setMethodCallHandler { call, result ->
                 when (call.method) {
                     "update" -> {
-                        CatalystWidget.save(this@MainActivity, call.arguments as? Map<*, *> ?: emptyMap<String, Any>())
+                        Widgets.save(this@MainActivity, call.arguments as? Map<*, *> ?: emptyMap<String, Any>())
                         result.success(null)
                     }
                     "launchAction" -> {
@@ -67,8 +68,15 @@ class MainActivity : FlutterActivity() {
         textOf(intent)?.let { smsChannel?.invokeMethod("shared", it) }
     }
 
-    private fun actionOf(intent: Intent?): String? =
-        if (intent?.action == CatalystWidget.ACTION_ADD) "add" else null
+    private fun actionOf(intent: Intent?): String? {
+        val target = intent?.getStringExtra(Widgets.EXTRA_TARGET)
+        return when (intent?.action) {
+            Widgets.ACTION_ADD -> "add"
+            Widgets.ACTION_OPEN -> target?.let { "open:$it" }
+            Widgets.ACTION_MOOD -> target?.let { "mood:$it" }
+            else -> null
+        }
+    }
 
     /** The text shared to the app (Share → Catalyst), when this intent carries some. */
     private fun textOf(intent: Intent?): String? =

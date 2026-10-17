@@ -170,8 +170,22 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
+  /// A home-screen widget tap: the +, a widget opening its page, or a mood face.
   void _widgetAction(String action) {
-    if (action == 'add' && mounted) openEntry(context);
+    if (!mounted) return;
+    final colon = action.indexOf(':');
+    final kind = colon < 0 ? action : action.substring(0, colon);
+    final arg = colon < 0 ? '' : action.substring(colon + 1);
+    switch (kind) {
+      case 'add':
+        openEntry(context);
+      case 'open':
+        final section = const {'dashboard': Section.dashboard, 'wallets': Section.wallets, 'bills': Section.bills}[arg];
+        if (section != null) go(section);
+      case 'mood':
+        final mood = int.tryParse(arg);
+        if (mood != null) openEntry(context, tab: EntryTab.mood, mood: mood);
+    }
   }
 
   void _checkUpdate() => Updates.check(
@@ -217,7 +231,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final p = Palette.of(context);
     final pages = {
       Section.calendar: const CalendarScreen(),
-      Section.dashboard: DashboardScreen(onCustomize: () => go(Section.settings), onWallets: () => go(Section.wallets)),
+      Section.dashboard: DashboardScreen(
+        onCustomize: () => openSettingsPage(context, SettingsPage.dashboard),
+        onWallets: () => go(Section.wallets),
+      ),
       Section.ledger: const LedgerScreen(),
       Section.journal: const JournalScreen(),
       Section.todo: const BoardsScreen(kind: BoardKind.todo),

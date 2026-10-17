@@ -55,7 +55,11 @@ modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalys
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 From 1.4.0 the app tells you when a new version is out: tap **Update** and the new APK downloads.
 
-**New in 1.4.1:** bKash / Nagad messages come in by **Share** — press and hold one in your Messages app, tap
+**New in 1.4.2:** **Continue with Google** on the login screen; **Settings** is a short list now, each part
+(language and currency, reminders, dashboard, categories, bKash & Nagad, About the app, account) on its own page;
+and **four new home-screen widgets** — this month, wallets, bills due, and a mood check-in you tap to log.
+
+**1.4.1:** bKash / Nagad messages come in by **Share** — press and hold one in your Messages app, tap
 Share, then Catalyst (or copy it and paste it in Settings). The app no longer asks to read SMS, so Android's
 Play Protect doesn't block installing it any more.
 
@@ -134,7 +138,10 @@ pull down to refresh, or just reopen the app.
 - **Offline** — the app keeps a copy of your data on the phone, so it opens on everything with no connection. Money
   entries and moods you add (or edit, or delete) offline — for any day, month or year — wait on the phone and sync
   in order once you're back online; a banner shows what's waiting.
-- **Home-screen widget** — today's spending at a glance, and a **+** that opens a new entry.
+- **Home-screen widgets** — five of them (press and hold the home screen → Widgets → Catalyst): **Spent today**
+  with a **+** for a new entry, **This month** (spent, earned, saved), **Wallets** (each balance and the total),
+  **Bills due** (the next three, overdue ones in red) and a **Mood check-in** — tap a face and the app opens on a
+  mood entry with it picked. They follow the app's language and currency, and tapping one opens its page.
 - **bKash / Nagad messages** — share a confirmation message to Catalyst (press and hold it in your Messages app →
   Share → Catalyst) or paste it in Settings, and the app suggests the entry (payments, send money, received,
   recharge, bills) or transfer (cash in / out, add money, to bank). Nothing is saved until you review and add; the
@@ -148,7 +155,10 @@ pull down to refresh, or just reopen the app.
   and Delete account (Settings).
 - **Updates** — a banner when a new version is on GitHub; **Update** downloads it. The first launch after an update
   pops up what's new.
-- **About the app** — Settings lists everything the app does, with what's new in this version on top.
+- **About the app** — everything the app does, with what's new in this version on top, plus the version and
+  **Check for updates**.
+- **Settings** — a short list that says how each thing is set (language and currency, reminders, dashboard,
+  categories, bKash & Nagad, About the app, account); each opens its own page.
 - **Dark and light themes** — dark by default, the same design as the web.
 
 ## Build from source
@@ -252,7 +262,7 @@ lib/
   widgets/             cards, buttons, segmented controls, charts, mood faces
   screens/             one screen per web page, plus the entry sheet and app shell
 android/…/MainActivity.kt   the share target (bKash / Nagad messages) and widget channels
-android/…/CatalystWidget.kt the home-screen widget
+android/…/Widgets.kt        the five home-screen widgets (figures sent by services/widget_sync.dart)
 build_apk.ps1          release build script (build_apk.bat to double-click)
 ```
 

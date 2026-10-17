@@ -21,13 +21,14 @@ import '../widgets/wallet_picker.dart';
 
 enum EntryTab { money, mood, saving }
 
-Future<void> openEntry(BuildContext context, {EntryTab tab = EntryTab.money, String? date}) {
+/// A new entry. [mood] (1-5) starts the mood tab on that face (the mood widget).
+Future<void> openEntry(BuildContext context, {EntryTab tab = EntryTab.money, String? date, int? mood}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     barrierColor: Colors.black.withValues(alpha: 0.45),
-    builder: (_) => EntrySheet(initialTab: tab, dateKey: date ?? toDateKey(DateTime.now())),
+    builder: (_) => EntrySheet(initialTab: tab, dateKey: date ?? toDateKey(DateTime.now()), initialMood: mood),
   );
 }
 
@@ -43,10 +44,11 @@ Future<void> openTxnEditor(BuildContext context, Txn txn) {
 }
 
 class EntrySheet extends StatefulWidget {
-  const EntrySheet({super.key, required this.initialTab, required this.dateKey});
+  const EntrySheet({super.key, required this.initialTab, required this.dateKey, this.initialMood});
 
   final EntryTab initialTab;
   final String dateKey;
+  final int? initialMood;
 
   @override
   State<EntrySheet> createState() => _EntrySheetState();
@@ -129,7 +131,7 @@ class _EntrySheetState extends State<EntrySheet> {
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                   child: switch (_tab) {
                     EntryTab.money => _MoneyForm(dateKey: widget.dateKey),
-                    EntryTab.mood => _MoodForm(dateKey: widget.dateKey),
+                    EntryTab.mood => _MoodForm(dateKey: widget.dateKey, initialMood: widget.initialMood),
                     EntryTab.saving => _SavingForm(dateKey: widget.dateKey),
                   },
                 ),
@@ -465,15 +467,16 @@ class _CategoryTile extends StatelessWidget {
 // ---------------------------------------------------------------- mood
 
 class _MoodForm extends StatefulWidget {
-  const _MoodForm({required this.dateKey});
+  const _MoodForm({required this.dateKey, this.initialMood});
   final String dateKey;
+  final int? initialMood;
 
   @override
   State<_MoodForm> createState() => _MoodFormState();
 }
 
 class _MoodFormState extends State<_MoodForm> {
-  int _mood = 3;
+  late int _mood = (widget.initialMood ?? 3).clamp(1, 5);
   final _note = TextEditingController();
   final _tags = <String>[];
   String _time = nowTime();

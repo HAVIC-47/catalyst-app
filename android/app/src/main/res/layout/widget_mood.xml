@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widget (Widgets.kt, MoodWidget): tap a face to log how today felt. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/mood_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/mood_title"
+            style="@style/WidgetTitle"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="@string/widget_mood_title" />
+
+        <TextView
+            android:id="@+id/mood_sub"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:maxLines="1"
+            android:textColor="@color/widget_muted"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <LinearLayout style="@style/WidgetMoodCell">
+            <ImageView android:id="@+id/mood_1" style="@style/WidgetMoodFace" android:contentDescription="@string/widget_mood_1" android:src="@drawable/mood_1" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/WidgetMoodCell">
+            <ImageView android:id="@+id/mood_2" style="@style/WidgetMoodFace" android:contentDescription="@string/widget_mood_2" android:src="@drawable/mood_2" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/WidgetMoodCell">
+            <ImageView android:id="@+id/mood_3" style="@style/WidgetMoodFace" android:contentDescription="@string/widget_mood_3" android:src="@drawable/mood_3" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/WidgetMoodCell">
+            <ImageView android:id="@+id/mood_4" style="@style/WidgetMoodFace" android:contentDescription="@string/widget_mood_4" android:src="@drawable/mood_4" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/WidgetMoodCell">
+            <ImageView android:id="@+id/mood_5" style="@style/WidgetMoodFace" android:contentDescription="@string/widget_mood_5" android:src="@drawable/mood_5" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

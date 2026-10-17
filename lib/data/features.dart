@@ -32,6 +32,22 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.4.2', [
+        if (googleSignIn)
+          Feature(LucideIcons.keyRound, tr('Continue with Google'), tr('Sign in with your Google account — no password to remember.')),
+        Feature(
+          LucideIcons.settings,
+          tr('Settings, sorted'),
+          tr('Settings is a short list now — language and currency, reminders, dashboard, categories, bKash & Nagad, '
+              'account — each on its own page.'),
+        ),
+        Feature(
+          LucideIcons.appWindow,
+          tr('Four new widgets'),
+          tr('This month, Wallets, Bills due and a Mood check-in. Press and hold your home screen, tap Widgets, then '
+              'Catalyst.'),
+        ),
+      ]),
       Release('1.4.1', [
         Feature(
           LucideIcons.share2,
@@ -148,7 +164,11 @@ List<FeatureGroup> appFeatures() {
         tr('Works offline'),
         tr("A copy of your data stays on the phone. Entries and moods made offline — for any date — sync when you're back online."),
       ),
-      Feature(LucideIcons.appWindow, tr('Home-screen widget'), tr("Today's spending at a glance, and a + for a quick entry.")),
+      Feature(
+        LucideIcons.appWindow,
+        tr('Home-screen widgets'),
+        tr('Spent today with a quick +, this month, your wallets, bills due, and a mood check-in you tap to log.'),
+      ),
       Feature(
         LucideIcons.messageSquareText,
         tr('bKash / Nagad messages'),

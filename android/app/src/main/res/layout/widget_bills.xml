@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widget (Widgets.kt, BillsWidget): the next bills due; overdue dates in red. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/bills_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/bills_title"
+        style="@style/WidgetTitle"
+        android:layout_width="match_parent"
+        android:text="@string/widget_bills_name" />
+
+    <TextView
+        android:id="@+id/bills_empty"
+        style="@style/WidgetEmpty"
+        android:text="@string/widget_open" />
+
+    <LinearLayout android:id="@+id/bill_row_1" style="@style/WidgetRow" android:visibility="gone">
+        <TextView android:id="@+id/bill_name_1" style="@style/WidgetRowName" />
+        <TextView android:id="@+id/bill_when_1" style="@style/WidgetRowDate" />
+        <TextView android:id="@+id/bill_amount_1" style="@style/WidgetRowAmount" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/bill_row_2" style="@style/WidgetRow" android:visibility="gone">
+        <TextView android:id="@+id/bill_name_2" style="@style/WidgetRowName" />
+        <TextView android:id="@+id/bill_when_2" style="@style/WidgetRowDate" />
+        <TextView android:id="@+id/bill_amount_2" style="@style/WidgetRowAmount" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/bill_row_3" style="@style/WidgetRow" android:visibility="gone">
+        <TextView android:id="@+id/bill_name_3" style="@style/WidgetRowName" />
+        <TextView android:id="@+id/bill_when_3" style="@style/WidgetRowDate" />
+        <TextView android:id="@+id/bill_amount_3" style="@style/WidgetRowAmount" />
+    </LinearLayout>
+</LinearLayout>

@@ -102,7 +102,9 @@ void main() {
       SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.4.0'});
       expect(await due('1.4.1'), ['1.4.1']);
       SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.4.1'});
-      expect(await due('1.4.2'), isEmpty); // a fix with no notes
+      expect(await due('1.4.2'), ['1.4.2']);
+      SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.4.2'});
+      expect(await due('1.4.3'), isEmpty); // a fix with no notes
       SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.5.0'});
       expect(await due('1.4.0'), isEmpty); // going back a version
     });
@@ -110,7 +112,8 @@ void main() {
     test('About shows the notes of the installed version', () {
       expect(releaseFor('1.4.0')?.version, '1.4.0');
       expect(releaseFor('1.4.1')?.version, '1.4.1');
-      expect(releaseFor('1.4.2')?.version, '1.4.1');
+      expect(releaseFor('1.4.2')?.version, '1.4.2');
+      expect(releaseFor('1.4.3')?.version, '1.4.2');
       expect(releaseFor('')?.version, releases().first.version);
       expect(releaseFor('1.3.0'), isNull);
     });
@@ -179,24 +182,45 @@ void main() {
     });
   });
 
-  test("the widget shows today's spending", () {
+  test("the widgets: spent today, this month, wallets, bills due and today's mood", () {
     final today = DateTime(2026, 10, 17, 9);
+    Bill bill(String id, String name, double amount, String due, {bool paid = false}) =>
+        Bill(id: id, name: name, amount: amount, dueOn: due, recurrence: 'monthly', isPaid: paid);
     final a = FakeApp()
       ..loading = false
+      ..walletsReady = true
+      ..wallets = const [
+        Wallet(id: 'cash', name: 'Cash', kind: WalletKind.cash, color: '#2E8159', openingBalance: 1000, sort: 0, archived: false),
+        Wallet(id: 'bk', name: 'bKash', kind: WalletKind.mobile, color: '#E2136E', openingBalance: 500, sort: 1, archived: false),
+        Wallet(id: 'old', name: 'Old', kind: WalletKind.other, color: '#7A746A', openingBalance: 99, sort: 2, archived: true),
+      ]
       ..transactions = [
-        for (final (id, kind, amount, day) in [
-          ('1', Kind.expense, 120.0, '2026-10-17'),
-          ('2', Kind.expense, 80.0, '2026-10-17'),
-          ('3', Kind.income, 5000.0, '2026-10-17'),
-          ('4', Kind.expense, 999.0, '2026-10-16'),
+        for (final (id, kind, amount, day, wallet) in [
+          ('1', Kind.expense, 120.0, '2026-10-17', 'bk'),
+          ('2', Kind.expense, 80.0, '2026-10-17', null),
+          ('3', Kind.income, 5000.0, '2026-10-01', null),
+          ('4', Kind.expense, 999.0, '2026-09-30', null),
         ])
-          Txn(id: id, kind: kind, amount: amount, categoryId: null, categoryName: 'Food', place: '', note: '', occurredOn: day, occurredAt: '', createdAt: ''),
-      ];
+          Txn(id: id, kind: kind, amount: amount, categoryId: null, categoryName: 'Food', place: '', note: '', occurredOn: day, occurredAt: '', createdAt: '', walletId: wallet),
+      ]
+      ..bills = [bill('r', 'Rent', 15000, '2026-11-01'), bill('i', 'Internet', 1200, '2026-10-15'), bill('w', 'Water', 300, '2026-10-10', paid: true)]
+      ..moods = const [MoodLog(id: 'm', mood: 4, note: '', tags: [], loggedOn: '2026-10-17', loggedAt: '2026-10-17T08:00:00Z', createdAt: '')];
     final f = HomeWidget.figures(a, today);
+    // spent today
     expect(f['date'], '2026-10-17');
     expect(f['amount'], '৳200');
     expect(f['sub'], '2 expenses · Oct 17');
     expect(HomeWidget.figures(FakeApp(), today)['sub'], 'Nothing yet · Oct 17');
+    // this month (last month's expense doesn't count)
+    expect([f['m_month'], f['m_spent'], f['m_earned'], f['m_saved'], f['m_saved_neg']], ['2026-10', '৳200', '৳5,000', '৳4,800', '0']);
+    // wallets: entries without one count in the default (Cash); archived ones stay off
+    expect([f['w1_name'], f['w1_amount'], f['w2_name'], f['w2_amount'], f['w3_name']], ['Cash', '৳4,921', 'bKash', '৳380', '']);
+    expect(f['w_total'], '৳5,301');
+    // bills: unpaid, earliest first; the widget colours the overdue one from its date
+    expect([f['b1_name'], f['b1_when'], f['b1_due'], f['b2_name'], f['b3_name']], ['Internet', 'Oct 15', '2026-10-15', 'Rent', '']);
+    // mood
+    expect([f['md_date'], f['md_sub'], f['md1'], f['md5']], ['2026-10-17', 'Today: Good', 'Awful', 'Great']);
+    expect(HomeWidget.figures(FakeApp(), today)['md_sub'], 'Not logged yet');
   });
 
   group('offline', () {

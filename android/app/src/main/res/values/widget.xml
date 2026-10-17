@@ -11,4 +11,30 @@
     <string name="widget_open">Open Catalyst to update</string>
     <string name="widget_add">New entry</string>
     <string name="widget_description">Today\'s spending, with a quick add</string>
+    <color name="widget_chip">#0D181512</color>
+    <!-- Mood faces (MoodWidget): the app's mood colors, a shade lighter at night. -->
+    <color name="widget_mood_1">#A8322A</color>
+    <color name="widget_mood_2">#C06A33</color>
+    <color name="widget_mood_3">#A68A2C</color>
+    <color name="widget_mood_4">#6E8C46</color>
+    <color name="widget_mood_5">#2E8159</color>
+    <string name="widget_today_name">Spent today</string>
+    <string name="widget_month_name">This month</string>
+    <string name="widget_month_title">This month</string>
+    <string name="widget_month_description">Spent, earned and saved this month</string>
+    <string name="widget_spent">Spent</string>
+    <string name="widget_earned">Earned</string>
+    <string name="widget_saved">Saved</string>
+    <string name="widget_wallets_name">Wallets</string>
+    <string name="widget_wallets_description">What\'s in each wallet, and the total</string>
+    <string name="widget_bills_name">Bills due</string>
+    <string name="widget_bills_description">The next bills due, overdue ones in red</string>
+    <string name="widget_mood_name">Mood check-in</string>
+    <string name="widget_mood_title">How was today?</string>
+    <string name="widget_mood_description">Tap a face to log how today felt</string>
+    <string name="widget_mood_1">Awful</string>
+    <string name="widget_mood_2">Low</string>
+    <string name="widget_mood_3">Okay</string>
+    <string name="widget_mood_4">Good</string>
+    <string name="widget_mood_5">Great</string>
 </resources>

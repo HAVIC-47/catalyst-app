@@ -1,6 +1,7 @@
-// About the app (Settings → About the app): the version, what's new in it, then
-// everything the Android app does (lib/data/features.dart). The same "what's new"
-// pops up once after each update — showWhatsNew, called by the shell.
+// About the app (Settings → About the app): the version and updates, what's new
+// in this version, then everything the Android app does (lib/data/features.dart).
+// The same "what's new" pops up once after each update — showWhatsNew, called by
+// the shell.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -25,6 +26,9 @@ class AboutScreen extends StatefulWidget {
 
 class _AboutScreenState extends State<AboutScreen> {
   String _version = Updates.current;
+  UpdateInfo? _found = Updates.available.value;
+  bool _checking = false;
+  bool _checked = false;
 
   @override
   void initState() {
@@ -33,6 +37,18 @@ class _AboutScreenState extends State<AboutScreen> {
       Updates.version().then((v) {
         if (mounted) setState(() => _version = v);
       }, onError: (Object _) {});
+    }
+  }
+
+  Future<void> _check() async {
+    setState(() => _checking = true);
+    final u = await Updates.check(force: true);
+    if (mounted) {
+      setState(() {
+        _checking = false;
+        _checked = true;
+        _found = u;
+      });
     }
   }
 
@@ -75,6 +91,25 @@ class _AboutScreenState extends State<AboutScreen> {
                   tr('Mood × money: an honest ledger that maps every taka against how the day actually felt.'),
                   style: bodyStyle(p, 14, color: p.muted(0.6), height: 1.5),
                 ),
+                if (_found != null) ...[
+                  const SizedBox(height: 10),
+                  Text(tr('Version {version} is out.', {'version': _found!.version}), style: bodyStyle(p, 13.5, color: p.accent)),
+                ] else if (_checked) ...[
+                  const SizedBox(height: 10),
+                  Text(tr("You're on the latest version."), style: bodyStyle(p, 13, color: p.muted(0.45))),
+                ],
+                const SizedBox(height: 12),
+                Wrap(spacing: 10, runSpacing: 10, children: [
+                  if (_found != null)
+                    PrimaryButton(icon: LucideIcons.download, label: tr('Update'), height: 42, onPressed: () => Updates.download(_found!)),
+                  HairlineButton(
+                    height: 42,
+                    onPressed: _checking ? null : _check,
+                    child: _checking
+                        ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.8, color: p.accent))
+                        : Text(tr('Check for updates'), style: bodyStyle(p, 13.5, color: p.muted(0.8))),
+                  ),
+                ]),
               ]),
             ),
             if (latest != null) _WhatsNewCard(release: latest),

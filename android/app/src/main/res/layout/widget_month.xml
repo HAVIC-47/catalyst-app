@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widget (Widgets.kt, MonthWidget): this month's spent, earned, saved. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/month_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/month_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.12"
+        android:maxLines="1"
+        android:text="@string/widget_month_title"
+        android:textAllCaps="true"
+        android:textColor="@color/widget_muted"
+        android:textSize="11sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/month_spent_label"
+                style="@style/WidgetFigureLabel"
+                android:text="@string/widget_spent" />
+
+            <TextView
+                android:id="@+id/month_spent"
+                style="@style/WidgetFigure"
+                android:text="@string/widget_placeholder" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/month_earned_label"
+                style="@style/WidgetFigureLabel"
+                android:text="@string/widget_earned" />
+
+            <TextView
+                android:id="@+id/month_earned"
+                style="@style/WidgetFigure"
+                android:text="@string/widget_placeholder" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/month_saved_label"
+                style="@style/WidgetFigureLabel"
+                android:text="@string/widget_saved" />
+
+            <TextView
+                android:id="@+id/month_saved"
+                style="@style/WidgetFigure"
+                android:text="@string/widget_placeholder" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

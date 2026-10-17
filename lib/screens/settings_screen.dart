@@ -1,7 +1,8 @@
-// Settings — port of the web's /app/settings: language, currency and reminders
-// (shared with the web through user metadata), pasting a bKash / Nagad message,
-// dashboard sections, categories, the app's version and updates,
-// About the app (every feature, what's new) and the account (delete).
+// Settings — port of the web's /app/settings: a list of what can be set, each
+// opening its own page: language and currency, reminders (both shared with the
+// web through user metadata), dashboard sections, categories, pasting a bKash /
+// Nagad message, About the app (version, updates, every feature, what's new) and
+// the account (delete).
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -30,13 +31,29 @@ const _swatches = [
   '#4C5B82', '#8E5B6E', '#A6694A', '#2F6F6B', '#6E8C46', '#7A746A',
 ];
 
+/// The settings pages, each opened from its row in Settings.
+enum SettingsPage { language, reminders, dashboard, categories, sms, account }
+
+/// Open one settings page on top of the app (the dashboard's "Customize" opens
+/// the dashboard sections straight away).
+Future<void> openSettingsPage(BuildContext context, SettingsPage page) =>
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _SettingsPageView(page)));
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final p = Palette.of(context);
     final app = context.watch<AppState>();
+    final r = app.reminders;
+    final remindersOn = [r.checkin, r.bills, r.budgets, r.dhar].where((on) => on).length;
+    final hidden = app.dashboardHidden ?? const <String>[];
+    final shown = dashboardSections.where((s) => !hidden.contains(s.$1)).length;
+    final cur = currencyOf(app.currency);
+    final email = isConfigured ? Supabase.instance.client.auth.currentUser?.email : null;
+    final update = Updates.available.value;
+    Widget row(SettingsPage page, IconData icon, String title, String hint) =>
+        _HubRow(icon: icon, title: title, hint: hint, onTap: () => openSettingsPage(context, page));
     return RefreshIndicator(
       onRefresh: app.load,
       child: ListView(
@@ -44,31 +61,173 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           PageHeader(kicker: tr('Settings'), title: tr('Make it'), accent: tr('yours.')),
-          const _LanguageSection(),
-          const _CurrencySection(),
-          const _RemindersSection(),
-          const _SmsSection(),
-          const _DashboardSections(),
-          const SizedBox(height: 28),
-          CardTitle(tr('Your'), tr('categories.'), size: 24),
-          const SizedBox(height: 4),
-          Text(
-            tr('Add, rename, recolor, or remove categories for expenses and income. Deleting one keeps past transactions labeled.'),
-            style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
-          ),
-          const SizedBox(height: 14),
-          const _CategorySection(kind: Kind.expense),
-          const SizedBox(height: 14),
-          const _CategorySection(kind: Kind.income),
-          if (app.categories.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(tr('Loading categories…'), style: monoStyle(p, 12, color: p.muted(0.3))),
+          _HubCard(children: [
+            row(SettingsPage.language, LucideIcons.languages, tr('Language & currency'),
+                '${app.lang == 'bn' ? 'বাংলা' : tr('English')} · ${cur.symbol.trim()} ${tr(cur.name)}'),
+            row(
+              SettingsPage.reminders,
+              LucideIcons.bellRing,
+              tr('Reminders'),
+              remindersOn == 0
+                  ? tr('All off')
+                  : tr('{n} of 4 on · check-in at {time}', {'n': remindersOn, 'time': _time(context, r.checkinTime)}),
             ),
-          const SizedBox(height: 28),
-          const _AppSection(),
-          const _AccountSection(),
+            row(SettingsPage.dashboard, LucideIcons.layoutGrid, tr('Dashboard'),
+                tr('{n} of {total} sections shown', {'n': shown, 'total': dashboardSections.length})),
+            row(
+              SettingsPage.categories,
+              LucideIcons.tags,
+              tr('Categories'),
+              tr('{expense} expense · {income} income', {
+                'expense': app.categories.where((c) => c.kind == Kind.expense).length,
+                'income': app.categories.where((c) => c.kind == Kind.income).length,
+              }),
+            ),
+            row(SettingsPage.sms, LucideIcons.messageSquareText, tr('bKash & Nagad'), tr('Add an entry from a payment message')),
+          ]),
+          const SizedBox(height: 14),
+          _HubCard(children: [
+            _HubRow(
+              icon: LucideIcons.info,
+              title: tr('About the app'),
+              hint: update != null
+                  ? tr('Version {version} is out.', {'version': update.version})
+                  : tr("Version, updates, every feature and what's new"),
+              accentHint: update != null,
+              onTap: () => openAbout(context),
+            ),
+            row(SettingsPage.account, LucideIcons.userRound, tr('Account'), email ?? tr('Your email and deleting the account')),
+          ]),
         ],
+      ),
+    );
+  }
+
+  static String _time(BuildContext context, String hhmm) {
+    final parts = hhmm.split(':');
+    final time = TimeOfDay(hour: int.tryParse(parts[0]) ?? 21, minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0);
+    return MaterialLocalizations.of(context).formatTimeOfDay(time);
+  }
+}
+
+/// A card of settings rows, with hairlines between them.
+class _HubCard extends StatelessWidget {
+  const _HubCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return CardBox(
+      padding: EdgeInsets.zero,
+      child: Column(children: [
+        for (final (i, child) in children.indexed) ...[
+          if (i > 0) Divider(height: 1, thickness: 1, color: p.line),
+          child,
+        ],
+      ]),
+    );
+  }
+}
+
+/// One row in Settings: what it is, its current setting, and a way in.
+class _HubRow extends StatelessWidget {
+  const _HubRow({required this.icon, required this.title, required this.hint, required this.onTap, this.accentHint = false});
+
+  final IconData icon;
+  final String title;
+  final String hint;
+  final VoidCallback onTap;
+  final bool accentHint;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        child: Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(color: p.accentA(0.1), borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, size: 17, color: p.accent),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: bodyStyle(p, 15, weight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(
+                hint,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: bodyStyle(p, 12.5, color: accentHint ? p.accent : p.muted(0.5)),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Icon(LucideIcons.chevronRight, size: 18, color: p.muted(0.35)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// One settings page: a back button and its title, then its cards.
+class _SettingsPageView extends StatelessWidget {
+  const _SettingsPageView(this.page);
+
+  final SettingsPage page;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final app = context.watch<AppState>();
+    final (title, children) = switch (page) {
+      SettingsPage.language => (tr('Language & currency'), const <Widget>[_LanguageSection(), _CurrencySection()]),
+      SettingsPage.reminders => (tr('Reminders'), const <Widget>[_RemindersSection()]),
+      SettingsPage.dashboard => (tr('Dashboard'), const <Widget>[_DashboardSections()]),
+      SettingsPage.categories => (
+          tr('Categories'),
+          <Widget>[
+            Text(
+              tr('Add, rename, recolor, or remove categories for expenses and income. Deleting one keeps past transactions labeled.'),
+              style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            const _CategorySection(kind: Kind.expense),
+            const SizedBox(height: 14),
+            const _CategorySection(kind: Kind.income),
+            if (app.categories.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(tr('Loading categories…'), style: monoStyle(p, 12, color: p.muted(0.3))),
+              ),
+          ],
+        ),
+      SettingsPage.sms => (tr('bKash & Nagad'), const <Widget>[_SmsSection()]),
+      SettingsPage.account => (tr('Account'), const <Widget>[_AccountSection()]),
+    };
+    return Scaffold(
+      backgroundColor: p.paper,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          children: [
+            Row(children: [
+              HairlineIconButton(icon: LucideIcons.arrowLeft, tooltip: tr('Back'), onPressed: () => Navigator.of(context).maybePop()),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: displayStyle(p, 24)),
+              ),
+            ]),
+            const SizedBox(height: 18),
+            ...children,
+          ],
+        ),
       ),
     );
   }
@@ -339,111 +498,6 @@ class _SmsSection extends StatelessWidget {
           ),
         ),
       ]),
-    );
-  }
-}
-
-// ---------------------------------------------------------------- app version
-class _AppSection extends StatefulWidget {
-  const _AppSection();
-
-  @override
-  State<_AppSection> createState() => _AppSectionState();
-}
-
-class _AppSectionState extends State<_AppSection> {
-  bool _checking = false;
-  UpdateInfo? _found;
-  bool _checked = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _found = Updates.available.value;
-    if (Updates.current.isEmpty) Updates.check().then((_) => mounted ? setState(() {}) : null);
-  }
-
-  Future<void> _check() async {
-    setState(() => _checking = true);
-    final u = await Updates.check(force: true);
-    if (mounted) {
-      setState(() {
-        _checking = false;
-        _checked = true;
-        _found = u;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    final found = _found;
-    return CardBox(
-      margin: const EdgeInsets.only(bottom: 14),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        CardTitle(tr('The'), tr('app')),
-        const SizedBox(height: 4),
-        Text(
-          Updates.current.isEmpty ? tr('Catalyst') : tr('Catalyst {version} for Android', {'version': Updates.current}),
-          style: bodyStyle(p, 13.5, color: p.muted(0.55)),
-        ),
-        if (found != null) ...[
-          const SizedBox(height: 4),
-          Text(tr('Version {version} is out.', {'version': found.version}), style: bodyStyle(p, 13.5, color: p.accent)),
-        ] else if (_checked) ...[
-          const SizedBox(height: 4),
-          Text(tr("You're on the latest version."), style: bodyStyle(p, 13, color: p.muted(0.45))),
-        ],
-        const SizedBox(height: 12),
-        const _AboutTile(),
-        const SizedBox(height: 12),
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          if (found != null)
-            PrimaryButton(icon: LucideIcons.download, label: tr('Update'), height: 42, onPressed: () => Updates.download(found)),
-          HairlineButton(
-            height: 42,
-            onPressed: _checking ? null : _check,
-            child: _checking
-                ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.8, color: p.accent))
-                : Text(tr('Check for updates'), style: bodyStyle(p, 13.5, color: p.muted(0.8))),
-          ),
-        ]),
-      ]),
-    );
-  }
-}
-
-/// Opens About the app: every feature, and what's new.
-class _AboutTile extends StatelessWidget {
-  const _AboutTile();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return Material(
-      color: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: p.line)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => openAbout(context),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            const BrandLogo(size: 36),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(tr('About the app'), style: bodyStyle(p, 14.5, weight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(tr("Every feature, and what's new"), style: bodyStyle(p, 12.5, color: p.muted(0.5))),
-              ]),
-            ),
-            const SizedBox(width: 8),
-            Icon(LucideIcons.chevronRight, size: 18, color: p.muted(0.4)),
-          ]),
-        ),
-      ),
     );
   }
 }

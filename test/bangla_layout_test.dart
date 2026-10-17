@@ -172,6 +172,26 @@ void main() {
   }
 
   for (final lang in ['bn', 'en']) {
+    testWidgets("every settings page fits a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {
+      await setAppLang(lang);
+      await _phone(tester);
+      await tester.pumpWidget(_host(_app(), const SettingsScreen()));
+      await tester.pump(const Duration(milliseconds: 50));
+      for (final page in SettingsPage.values) {
+        openSettingsPage(tester.element(find.byType(SettingsScreen)), page);
+        await tester.pumpAndSettle();
+        for (var i = 0; i < 8; i++) {
+          await tester.drag(find.byType(ListView).last, const Offset(0, -500), warnIfMissed: false);
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        final error = tester.takeException();
+        if (error is FlutterError) debugPrint('$page: ${error.toStringDeep()}');
+        expect(error, isNull, reason: '$page');
+        tester.state<NavigatorState>(find.byType(Navigator)).pop();
+        await tester.pumpAndSettle();
+      }
+    });
+
     testWidgets("the what's-new pop-up fits a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {
       await setAppLang(lang);
       await _phone(tester);

@@ -8,12 +8,14 @@ import 'package:catalyst/models.dart';
 import 'package:catalyst/screens/about_screen.dart';
 import 'package:catalyst/screens/bills_screen.dart';
 import 'package:catalyst/screens/dhar_screen.dart';
+import 'package:catalyst/screens/entry_sheet.dart';
 import 'package:catalyst/screens/settings_screen.dart';
 import 'package:catalyst/screens/shell.dart';
 import 'package:catalyst/screens/sms_review_sheet.dart';
 import 'package:catalyst/screens/wallets_screen.dart';
 import 'package:catalyst/services/updates.dart';
 import 'package:catalyst/services/whats_new.dart';
+import 'package:catalyst/services/widget_sync.dart';
 import 'package:catalyst/theme/app_theme.dart';
 import 'package:catalyst/theme/palette.dart';
 import 'package:catalyst/theme/theme_controller.dart';
@@ -169,24 +171,37 @@ void main() {
     expect(app.bills.single.dueOn, toDateKey(due));
   });
 
-  testWidgets('Settings: language, currency and reminders', (tester) async {
+  testWidgets('Settings: a list of pages — language, currency and reminders', (tester) async {
     await _tall(tester);
     final app = _app(FakeMoneyDb());
     await tester.pumpWidget(host(app, const SettingsScreen()));
     await tester.pump();
-    expect(find.text('Example: ৳1,25,000.5'), findsOneWidget);
+    expect(find.text('English · ৳ Bangladeshi taka'), findsOneWidget); // each row says what's set
 
+    await tester.tap(find.text('Language & currency'));
+    await tester.pumpAndSettle();
+    expect(find.text('Example: ৳1,25,000.5'), findsOneWidget);
     await tester.tap(find.widgetWithText(AppDropdown, '৳ · Bangladeshi taka (BDT)'));
     await tester.pumpAndSettle();
     await tester.tap(find.text(r'C$ · Canadian dollar (CAD)').last);
     await tester.pumpAndSettle();
     expect(app.currency, 'CAD');
     expect(find.text(r'Example: C$125,000.5'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text(r'English · C$ Canadian dollar'), findsOneWidget);
 
+    await tester.tap(find.text('Reminders'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Bills').first);
     await tester.pump();
     expect(app.reminders.bills, isFalse);
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('3 of 4 on'), findsOneWidget);
 
+    await tester.tap(find.text('Language & currency'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('বাংলা'));
     await tester.pumpAndSettle();
     expect(app.lang, 'bn');
@@ -215,8 +230,8 @@ void main() {
     final list = find.descendant(of: find.byType(AboutScreen), matching: find.byType(Scrollable)).first;
     await tester.scrollUntilVisible(find.text('One account, two apps'), 400, scrollable: list);
     expect(find.textContaining('catalyst-hishab.vercel.app'), findsOneWidget);
-    // The app's own features (the widget, the SMS reader) — the web lists its own.
-    expect(find.text('Home-screen widget'), findsWidgets);
+    // The app's own features (the widgets, bKash / Nagad messages) — the web lists its own.
+    expect(find.text('Home-screen widgets'), findsOneWidget);
     expect(find.text('bKash / Nagad messages'), findsWidgets);
 
     await tester.scrollUntilVisible(find.byTooltip('Back'), -400, scrollable: list);
@@ -271,6 +286,27 @@ void main() {
     expect(find.byType(WhatsNewDialog), findsNothing); // the share comes first; what's new waits
   });
 
+  testWidgets('home-screen widget taps: Bills due opens Bills; a face opens the mood entry on it', (tester) async {
+    await _tall(tester);
+    _phoneChannels();
+    final theme = await ThemeController.load();
+    await tester.pumpWidget(MultiProvider(
+      providers: [ChangeNotifierProvider.value(value: theme), ChangeNotifierProvider<AppState>.value(value: _app(FakeMoneyDb()))],
+      child: MaterialApp(theme: buildTheme(Palette.night), home: const AppShell()),
+    ));
+    await tester.pumpAndSettle();
+
+    HomeWidget.actions.add('open:bills');
+    await tester.pumpAndSettle();
+    expect(find.byType(BillsScreen), findsOneWidget);
+
+    HomeWidget.actions.add('mood:4');
+    await tester.pumpAndSettle();
+    expect(find.byType(EntrySheet), findsOneWidget);
+    final good = find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Good' && w.properties.selected == true);
+    expect(good, findsOneWidget);
+  });
+
   testWidgets('Settings: Paste a message reads a copied bKash message', (tester) async {
     await _tall(tester);
     String? copied;
@@ -282,9 +318,9 @@ void main() {
     addTearDown(() => messenger.setMockMethodCallHandler(SystemChannels.platform, null));
     await tester.pumpWidget(host(_app(FakeMoneyDb()), const SettingsScreen()));
     await tester.pump();
+    await tester.tap(find.text('bKash & Nagad'));
+    await tester.pumpAndSettle();
     final paste = find.text('Paste a message');
-    await tester.scrollUntilVisible(paste, 300, scrollable: find.byType(Scrollable).first);
-
     await tester.tap(paste);
     await tester.pumpAndSettle();
     expect(find.text('Copy a bKash or Nagad message first, then tap Paste.'), findsOneWidget);

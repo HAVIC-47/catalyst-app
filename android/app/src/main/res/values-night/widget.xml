@@ -5,4 +5,10 @@
     <color name="widget_ink">#FAF9F6</color>
     <color name="widget_muted">#8CFAF9F6</color>
     <color name="widget_accent">#E28670</color>
+    <color name="widget_chip">#14FFFFFF</color>
+    <color name="widget_mood_1">#E26A5E</color>
+    <color name="widget_mood_2">#E0905A</color>
+    <color name="widget_mood_3">#D9BC5C</color>
+    <color name="widget_mood_4">#9BBB6C</color>
+    <color name="widget_mood_5">#54B585</color>
 </resources>

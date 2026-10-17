@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # versionName+versionCode on Android. Bump the +number for every APK you install
 # over an older one.
-version: 1.4.1+9
+version: 1.4.2+10
 
 environment:
   sdk: ^3.13.5
