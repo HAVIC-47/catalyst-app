@@ -32,6 +32,19 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.4.1', [
+        Feature(
+          LucideIcons.share2,
+          tr('Share a bKash or Nagad message'),
+          tr('Press and hold the message in your Messages app, tap Share, then Catalyst — or copy it and paste it in '
+              'Settings. The entry is ready for you to check.'),
+        ),
+        Feature(
+          LucideIcons.shieldCheck,
+          tr('No SMS permission'),
+          tr("The app doesn't ask to read your messages any more, so Android no longer blocks installing it."),
+        ),
+      ]),
       Release('1.4.0', [
         Feature(LucideIcons.wallet, tr('Wallets'), tr("Cash, bKash, Nagad and Bank: what's in each, and transfers between them.")),
         Feature(LucideIcons.handCoins, tr('Dhar / baki'), tr('Money you lent or borrowed, per person — part payments, settle, write off.')),
@@ -139,8 +152,8 @@ List<FeatureGroup> appFeatures() {
       Feature(
         LucideIcons.messageSquareText,
         tr('bKash / Nagad messages'),
-        tr('Turn it on in Settings and the app suggests entries from payment messages. Nothing is saved until you add it, '
-            'and the messages never leave the phone.'),
+        tr('Share a payment message to Catalyst (or paste it in Settings) and the app suggests the entry. It\'s read on '
+            'the phone only, and nothing is saved until you add it.'),
       ),
       Feature(LucideIcons.download, tr('Updates'), tr("The app tells you when a new version is out — Update downloads it — and shows what's new.")),
     ]),

@@ -1,5 +1,6 @@
-// bKash / Nagad messages -> suggested entries, read on the phone (services/sms.dart),
-// and how the review plans each one (screens/sms_review_sheet.dart).
+// bKash / Nagad messages -> suggested entries, read on the phone (services/sms.dart):
+// shared or pasted into the app, and how the review plans each one
+// (screens/sms_review_sheet.dart).
 import 'package:catalyst/models.dart';
 import 'package:catalyst/screens/sms_review_sheet.dart';
 import 'package:catalyst/services/sms.dart';
@@ -103,32 +104,46 @@ void main() {
     });
   });
 
-  group('capture', () {
-    setUp(() => SharedPreferences.setMockInitialValues({'sms:on': true, 'sms:since': 0}));
-    tearDown(() => SmsCapture.readInbox = (since) async => const []);
+  group('shared or pasted', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+    const payment = 'Payment Tk 350.00 to Daraz successful. Fee Tk 0.00. TrxID BJ72AB3C4D at 17/10/2026 15:01';
+    const nagad = 'Money Received.\nAmount: Tk 300.00\nSender: 01812345678\nTxnID: 7A2B3C4D\nBalance: Tk 1,050.00\n17/10/2026 13:20';
 
-    test('new messages once; nothing again after they are handled', () async {
-      SmsCapture.readInbox = (since) async => [
-            {'id': '1', 'address': 'bKash', 'date': _at.millisecondsSinceEpoch, 'body': 'Payment Tk 350.00 to Daraz successful. Fee Tk 0.00. TrxID BJ72AB3C4D at 17/10/2026 15:01'},
-            {'id': '2', 'address': 'bKash', 'date': _at.millisecondsSinceEpoch, 'body': 'Your bKash verification code is 123456.'},
-            // the same transaction again (a re-sent message): one suggestion
-            {'id': '3', 'address': 'bKash', 'date': _at.millisecondsSinceEpoch, 'body': 'Payment Tk 350.00 to Daraz successful. Fee Tk 0.00. TrxID BJ72AB3C4D at 17/10/2026 15:01'},
-          ];
-      final first = await SmsCapture.pending();
-      expect(first.length, 1);
-      await SmsCapture.markSeen(first);
-      expect(await SmsCapture.pending(), isEmpty);
+    test('a shared message is suggested once; after that it is already added', () async {
+      final first = await SmsShare.read(payment, now: _at);
+      expect(first.fresh.single.amount, 350);
+      expect(first.fresh.single.provider, 'bKash');
+      await SmsShare.markSeen(first.fresh);
+      final again = await SmsShare.read(payment, now: _at);
+      expect(again.fresh, isEmpty);
+      expect(again.already, 1);
     });
 
-    test('off means nothing is read', () async {
-      SharedPreferences.setMockInitialValues({'sms:on': false});
-      var read = false;
-      SmsCapture.readInbox = (since) async {
-        read = true;
-        return const [];
-      };
-      expect(await SmsCapture.pending(), isEmpty);
-      expect(read, isFalse);
+    test('without a sender, Nagad is told apart by its TxnID', () {
+      expect(parseMessages(nagad, now: _at).single.provider, 'Nagad');
+      expect(parseMessages(payment, now: _at).single.provider, 'bKash');
+    });
+
+    test('several messages pasted at once, with blank lines between', () {
+      const cashOut = 'Cash Out Tk 1,000.00 to 01612345678 successful. Fee Tk 18.50. TrxID BJ74QR7S8T at 16/10/2026 09:30';
+      final found = parseMessages('$payment\n\n$cashOut\n\n$payment', now: _at);
+      expect(found.map((s) => s.action), [SmsAction.payment, SmsAction.cashOut]); // newest first, no repeat
+    });
+
+    test('a shared message keeps its own date, even when it is old', () {
+      final old = parseMessages('Payment Tk 99.00 to Shwapno successful. Fee Tk 0.00. TrxID BJ10AA1A1A at 02/10/2026 18:45', now: _at).single;
+      expect(old.when, DateTime(2026, 10, 2, 18, 45));
+      // ...but not one from the future, or one that isn't a real date
+      final future = parseMessages('Payment Tk 99.00 to Shwapno successful. Fee Tk 0.00. TrxID BJ10AA1A1B at 25/12/2026 18:45', now: _at).single;
+      expect(future.when, _at);
+    });
+
+    test('anything else is not an entry', () async {
+      expect(parseMessages('Your bKash verification code is 123456.', now: _at), isEmpty);
+      expect(parseMessages('https://example.com/some-article', now: _at), isEmpty);
+      final r = await SmsShare.read('   ', now: _at);
+      expect(r.fresh, isEmpty);
+      expect(r.already, 0);
     });
   });
 

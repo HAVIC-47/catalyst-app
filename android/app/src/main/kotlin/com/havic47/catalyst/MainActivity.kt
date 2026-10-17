@@ -1,54 +1,45 @@
 package com.havic47.catalyst
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.provider.Telephony
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 // Two small channels for the Flutter side:
-// - catalyst/sms: opt-in reading of bKash / Nagad messages. Only messages from
-//   those senders are read, only after the user turns it on and grants READ_SMS,
-//   and they're parsed on the phone — nothing here sends them anywhere.
+// - catalyst/sms: a bKash / Nagad message the user shared to the app (Messages →
+//   press and hold → Share → Catalyst). Only that text arrives — the app has no
+//   SMS permission and reads nothing else; it's parsed on the phone.
 // - catalyst/widget: the home-screen widget's figures, and the widget's
 //   "quick add" tap handed to the app.
 class MainActivity : FlutterActivity() {
-    private var smsPermissionResult: MethodChannel.Result? = null
+    private var smsChannel: MethodChannel? = null
     private var widgetChannel: MethodChannel? = null
     private var launchAction: String? = null
+    private var sharedText: String? = null
+    private var restored = false
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Brought back after Android closed it: the share it was opened with is old news.
+        restored = savedInstanceState != null
+        super.onCreate(savedInstanceState)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         launchAction = actionOf(intent)
+        sharedText = if (restored) null else textOf(intent)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
 
-        MethodChannel(messenger, "catalyst/sms").setMethodCallHandler { call, result ->
-            when (call.method) {
-                "hasPermission" -> result.success(hasSmsPermission())
-                "requestPermission" -> {
-                    if (hasSmsPermission()) {
-                        result.success(true)
-                    } else {
-                        smsPermissionResult?.success(false)
-                        smsPermissionResult = result
-                        requestPermissions(arrayOf(Manifest.permission.READ_SMS), SMS_REQUEST)
+        smsChannel = MethodChannel(messenger, "catalyst/sms").apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "sharedText" -> {
+                        result.success(sharedText)
+                        sharedText = null
                     }
+                    else -> result.notImplemented()
                 }
-                "read" -> {
-                    if (!hasSmsPermission()) {
-                        result.error("permission", "READ_SMS not granted", null)
-                    } else {
-                        val since = (call.argument<Number>("since"))?.toLong() ?: 0L
-                        try {
-                            result.success(readWalletMessages(since))
-                        } catch (e: Exception) {
-                            result.error("read", e.message, null)
-                        }
-                    }
-                }
-                else -> result.notImplemented()
             }
         }
 
@@ -73,58 +64,21 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         actionOf(intent)?.let { widgetChannel?.invokeMethod("action", it) }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == SMS_REQUEST) {
-            smsPermissionResult?.success(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
-            smsPermissionResult = null
-        }
+        textOf(intent)?.let { smsChannel?.invokeMethod("shared", it) }
     }
 
     private fun actionOf(intent: Intent?): String? =
         if (intent?.action == CatalystWidget.ACTION_ADD) "add" else null
 
-    private fun hasSmsPermission() = checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
-
-    /** Inbox messages from bKash / Nagad newer than [since] (ms), newest first. */
-    private fun readWalletMessages(since: Long): List<Map<String, Any>> {
-        val out = mutableListOf<Map<String, Any>>()
-        contentResolver.query(
-            Telephony.Sms.Inbox.CONTENT_URI,
-            arrayOf(Telephony.Sms._ID, Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
-            "${Telephony.Sms.DATE} > ?",
-            arrayOf(since.toString()),
-            "${Telephony.Sms.DATE} DESC",
-        )?.use { c ->
-            val idCol = c.getColumnIndexOrThrow(Telephony.Sms._ID)
-            val addressCol = c.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
-            val bodyCol = c.getColumnIndexOrThrow(Telephony.Sms.BODY)
-            val dateCol = c.getColumnIndexOrThrow(Telephony.Sms.DATE)
-            var scanned = 0
-            while (c.moveToNext() && scanned < MAX_SCAN && out.size < MAX_MESSAGES) {
-                scanned++
-                val address = c.getString(addressCol) ?: continue
-                val sender = address.lowercase().replace(Regex("[^a-z0-9]"), "")
-                if (SENDERS.none { sender.contains(it) }) continue
-                out.add(
-                    mapOf(
-                        "id" to c.getLong(idCol).toString(),
-                        "address" to address,
-                        "body" to (c.getString(bodyCol) ?: ""),
-                        "date" to c.getLong(dateCol),
-                    ),
-                )
-            }
+    /** The text shared to the app (Share → Catalyst), when this intent carries some. */
+    private fun textOf(intent: Intent?): String? =
+        if (intent?.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true) {
+            intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }?.take(MAX_TEXT)
+        } else {
+            null
         }
-        return out
-    }
 
     companion object {
-        private const val SMS_REQUEST = 4701
-        private const val MAX_SCAN = 3000
-        private const val MAX_MESSAGES = 300
-        private val SENDERS = listOf("bkash", "nagad", "16247", "16167")
+        private const val MAX_TEXT = 5000
     }
 }

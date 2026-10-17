@@ -1,6 +1,7 @@
 // The new pages: Wallets (balances, transfers with a fee), Dhar (people, part
 // payments, settling), Bills (pay -> expense + next due date, Undo), Settings
-// (language, currency, reminders), About the app and the what's-new pop-up.
+// (language, currency, reminders), About the app and the what's-new pop-up, and a
+// bKash message shared to the app or pasted in Settings.
 import 'package:catalyst/data/app_state.dart';
 import 'package:catalyst/data/insights.dart';
 import 'package:catalyst/models.dart';
@@ -9,6 +10,7 @@ import 'package:catalyst/screens/bills_screen.dart';
 import 'package:catalyst/screens/dhar_screen.dart';
 import 'package:catalyst/screens/settings_screen.dart';
 import 'package:catalyst/screens/shell.dart';
+import 'package:catalyst/screens/sms_review_sheet.dart';
 import 'package:catalyst/screens/wallets_screen.dart';
 import 'package:catalyst/services/updates.dart';
 import 'package:catalyst/services/whats_new.dart';
@@ -29,6 +31,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_app.dart';
 import 'fake_money_db.dart';
+
+const _payment = 'Payment Tk 350.00 to Daraz successful. Fee Tk 0.00. TrxID BJ72AB3C4D at 17/10/2026 15:01';
+
+/// Answers the app's own platform channels the way a phone opened normally would
+/// (an unanswered channel stalls the shell's start-up in a test).
+void _phoneChannels({String? shared}) {
+  final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  messenger.setMockMethodCallHandler(const MethodChannel('catalyst/widget'), (_) async => null);
+  messenger.setMockMethodCallHandler(const MethodChannel('catalyst/sms'), (call) async => call.method == 'sharedText' ? shared : null);
+  addTearDown(() {
+    messenger.setMockMethodCallHandler(const MethodChannel('catalyst/widget'), null);
+    messenger.setMockMethodCallHandler(const MethodChannel('catalyst/sms'), null);
+  });
+}
 
 const _cash = Wallet(id: 'cash', name: 'Cash', kind: WalletKind.cash, color: '#2E8159', openingBalance: 2000, sort: 0, archived: false);
 const _bkash = Wallet(id: 'bk', name: 'bKash', kind: WalletKind.mobile, color: '#E2136E', openingBalance: 5000, sort: 1, archived: false);
@@ -214,10 +230,7 @@ void main() {
     Updates.current = '1.4.0';
     addTearDown(() => Updates.current = '');
     WhatsNew.readInstall = () async => (version: '1.4.0', updated: true);
-    // Not opened from the widget (an unanswered channel would stall the start-up).
-    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(const MethodChannel('catalyst/widget'), (_) async => null);
-    addTearDown(() => messenger.setMockMethodCallHandler(const MethodChannel('catalyst/widget'), null));
+    _phoneChannels(); // opened from the launcher, not the widget or a share
     final theme = await ThemeController.load();
     final app = _app(FakeMoneyDb());
     Widget shell() => MultiProvider(
@@ -241,5 +254,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(WhatsNewDialog), findsNothing);
     expect(find.byType(AboutScreen), findsNothing);
+  });
+
+  testWidgets('a bKash message shared to the app opens for review', (tester) async {
+    await _tall(tester);
+    WhatsNew.readInstall = () async => (version: '1.4.1', updated: true);
+    _phoneChannels(shared: _payment);
+    final theme = await ThemeController.load();
+    await tester.pumpWidget(MultiProvider(
+      providers: [ChangeNotifierProvider.value(value: theme), ChangeNotifierProvider<AppState>.value(value: _app(FakeMoneyDb()))],
+      child: MaterialApp(theme: buildTheme(Palette.night), home: const AppShell()),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byType(SmsReviewSheet), findsOneWidget);
+    expect(find.textContaining('Daraz'), findsWidgets);
+    expect(find.byType(WhatsNewDialog), findsNothing); // the share comes first; what's new waits
+  });
+
+  testWidgets('Settings: Paste a message reads a copied bKash message', (tester) async {
+    await _tall(tester);
+    String? copied;
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.getData') return copied == null ? null : {'text': copied};
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    await tester.pumpWidget(host(_app(FakeMoneyDb()), const SettingsScreen()));
+    await tester.pump();
+    final paste = find.text('Paste a message');
+    await tester.scrollUntilVisible(paste, 300, scrollable: find.byType(Scrollable).first);
+
+    await tester.tap(paste);
+    await tester.pumpAndSettle();
+    expect(find.text('Copy a bKash or Nagad message first, then tap Paste.'), findsOneWidget);
+
+    copied = 'Your bKash verification code is 123456.';
+    await tester.tap(paste);
+    await tester.pumpAndSettle();
+    expect(find.text("That doesn't look like a bKash or Nagad payment message."), findsOneWidget);
+
+    copied = _payment;
+    await tester.tap(paste);
+    await tester.pumpAndSettle();
+    expect(find.byType(SmsReviewSheet), findsOneWidget);
   });
 }

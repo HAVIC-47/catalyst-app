@@ -92,22 +92,25 @@ void main() {
     });
 
     test('an update from a version that kept no record shows its notes once', () async {
-      expect(await due('1.4.0'), ['1.4.0']); // from 1.3.0, which didn't remember a version
-      expect(await due('1.4.0'), isEmpty);
+      expect(await due('1.4.1'), ['1.4.1', '1.4.0']); // from 1.3.0, which didn't remember a version
+      expect(await due('1.4.1'), isEmpty);
     });
 
     test('only releases since the version last opened, newest first', () async {
       SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.3.0'});
       expect(await due('1.4.0'), ['1.4.0']);
       SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.4.0'});
-      expect(await due('1.4.1'), isEmpty); // a fix with no notes
+      expect(await due('1.4.1'), ['1.4.1']);
+      SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.4.1'});
+      expect(await due('1.4.2'), isEmpty); // a fix with no notes
       SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.5.0'});
       expect(await due('1.4.0'), isEmpty); // going back a version
     });
 
     test('About shows the notes of the installed version', () {
       expect(releaseFor('1.4.0')?.version, '1.4.0');
-      expect(releaseFor('1.4.2')?.version, '1.4.0');
+      expect(releaseFor('1.4.1')?.version, '1.4.1');
+      expect(releaseFor('1.4.2')?.version, '1.4.1');
       expect(releaseFor('')?.version, releases().first.version);
       expect(releaseFor('1.3.0'), isNull);
     });

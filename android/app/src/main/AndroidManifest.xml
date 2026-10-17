@@ -4,9 +4,8 @@
     <!-- Reminders (check-in, bills, dhar) are scheduled on the phone and put back
          after a restart. POST_NOTIFICATIONS comes from flutter_local_notifications. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <!-- Opt-in: read bKash / Nagad messages to suggest entries. Asked for only when
-         the user turns it on in Settings; messages are parsed on the phone. -->
-    <uses-permission android:name="android.permission.READ_SMS"/>
+    <!-- No SMS permission: Play Protect blocks sideloaded apps that ask for one. A
+         bKash / Nagad message reaches the app only when the user shares it. -->
 
     <application
         android:label="Catalyst"
@@ -44,6 +43,13 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="com.havic47.catalyst" android:host="login-callback"/>
+            </intent-filter>
+            <!-- A bKash / Nagad message shared from the Messages app (Share → Catalyst):
+                 MainActivity hands the text to the app, which suggests the entry. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
             </intent-filter>
             <!-- supabase_flutter reads those links itself; keep Flutter's router out of it. -->
             <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>

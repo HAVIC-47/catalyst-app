@@ -1,8 +1,9 @@
 // Settings — port of the web's /app/settings: language, currency and reminders
-// (shared with the web through user metadata), bKash / Nagad SMS capture (this
-// phone only), dashboard sections, categories, the app's version and updates,
+// (shared with the web through user metadata), pasting a bKash / Nagad message,
+// dashboard sections, categories, the app's version and updates,
 // About the app (every feature, what's new) and the account (delete).
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -13,7 +14,6 @@ import '../data/app_state.dart';
 import '../data/offline.dart';
 import '../models.dart';
 import '../services/notifications.dart';
-import '../services/sms.dart';
 import '../services/updates.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
@@ -301,90 +301,43 @@ class _RemindersSectionState extends State<_RemindersSection> {
   }
 }
 
-// ---------------------------------------------------------------- bKash / Nagad SMS
-class _SmsSection extends StatefulWidget {
+// ---------------------------------------------------------------- bKash / Nagad messages
+/// A bKash / Nagad message becomes an entry when it's shared to the app (from the
+/// Messages app) or pasted here. No SMS permission: nothing else is read.
+class _SmsSection extends StatelessWidget {
   const _SmsSection();
 
-  @override
-  State<_SmsSection> createState() => _SmsSectionState();
-}
-
-class _SmsSectionState extends State<_SmsSection> {
-  bool? _on;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _read();
-  }
-
-  Future<void> _read() async {
-    final on = await SmsCapture.isOn() && await SmsCapture.hasPermission();
-    if (mounted) setState(() => _on = on);
-  }
-
-  Future<void> _toggle() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      if (_on ?? false) {
-        await SmsCapture.disable();
-      } else if (!await SmsCapture.enable() && mounted) {
-        showError(context, tr('Without permission to read SMS this stays off. You can allow it any time.'));
-      }
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      await _read();
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _scan() async {
-    final found = await SmsCapture.pending();
-    if (!mounted) return;
-    if (found.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('No new bKash or Nagad messages.'))));
-    } else {
-      await openSmsReview(context, found);
-    }
+  Future<void> _paste(BuildContext context) async {
+    final copied = await Clipboard.getData(Clipboard.kTextPlain);
+    if (context.mounted) await reviewSharedText(context, copied?.text ?? '');
   }
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    if (!Notifications.supported) return const SizedBox.shrink();
-    final on = _on ?? false;
     return CardBox(
       margin: const EdgeInsets.only(bottom: 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         CardTitle(tr('bKash & Nagad'), tr('messages')),
         const SizedBox(height: 4),
         Text(
-          tr('Suggest entries from your bKash and Nagad confirmation SMS. Messages are read and understood on this phone '
-              'only — never uploaded. You review each one, and only what you add is saved.'),
+          tr('Turn a bKash or Nagad confirmation into an entry: in your Messages app, press and hold the message, tap '
+              'Share, then Catalyst. Or copy it and tap Paste below. It\'s read on this phone only, and you check it before '
+              'anything is saved.'),
           style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
         ),
         const SizedBox(height: 12),
-        _SwitchRow(
-          on: on,
-          onChanged: (_) => _toggle(),
-          label: tr('Read bKash / Nagad SMS'),
-          hint: on ? tr('On — new messages show up for review when you open the app.') : tr('Off'),
-        ),
-        if (on)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: HairlineButton(
-              onPressed: _scan,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(LucideIcons.scanSearch, size: 15, color: p.muted(0.7)),
-                const SizedBox(width: 8),
-                Text(tr('Check messages now'), style: bodyStyle(p, 13.5, color: p.muted(0.8))),
-              ]),
-            ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: HairlineButton(
+            onPressed: () => _paste(context),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(LucideIcons.clipboardPaste, size: 15, color: p.muted(0.7)),
+              const SizedBox(width: 8),
+              Flexible(child: Text(tr('Paste a message'), style: bodyStyle(p, 13.5, color: p.muted(0.8)))),
+            ]),
           ),
+        ),
       ]),
     );
   }

@@ -55,12 +55,16 @@ modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalys
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 From 1.4.0 the app tells you when a new version is out: tap **Update** and the new APK downloads.
 
-**New in 1.4.0:** **Wallets** (Cash, bKash, Nagad, Bank — what's in each, and transfers between them),
+**New in 1.4.1:** bKash / Nagad messages come in by **Share** — press and hold one in your Messages app, tap
+Share, then Catalyst (or copy it and paste it in Settings). The app no longer asks to read SMS, so Android's
+Play Protect doesn't block installing it any more.
+
+**1.4.0:** **Wallets** (Cash, bKash, Nagad, Bank — what's in each, and transfers between them),
 **Dhar / baki** (money lent and borrowed, part payments, settle), **bills that log themselves** (tick one when
 you pay it and the expense is added, then it moves to next month — with Undo), **reminders** on your phone
 (evening check-in, bills and dhar due tomorrow, budgets at 80% / 100%), works **offline** (everything is kept
 on the phone; entries and moods made offline sync later), a **home-screen widget** (today's spending and a
-quick +), optional **bKash / Nagad SMS** suggestions (read on the phone only), an **AI monthly recap**,
+quick +), **bKash / Nagad** message suggestions (read on the phone only), an **AI monthly recap**,
 **currency** choice, the whole app in **বাংলা**, and **Forgot password**, Google sign-in and **Delete account**.
 Also a **new logo**, **About the app** in Settings, and a **What's new** pop-up after each update.
 
@@ -131,9 +135,10 @@ pull down to refresh, or just reopen the app.
   entries and moods you add (or edit, or delete) offline — for any day, month or year — wait on the phone and sync
   in order once you're back online; a banner shows what's waiting.
 - **Home-screen widget** — today's spending at a glance, and a **+** that opens a new entry.
-- **bKash / Nagad SMS** (opt-in, Settings) — the app reads confirmation messages from those two senders on the phone
-  and suggests entries (payments, send money, received, recharge, bills) and transfers (cash in / out, add money,
-  to bank). Nothing is saved until you review and add; the messages never leave the phone.
+- **bKash / Nagad messages** — share a confirmation message to Catalyst (press and hold it in your Messages app →
+  Share → Catalyst) or paste it in Settings, and the app suggests the entry (payments, send money, received,
+  recharge, bills) or transfer (cash in / out, add money, to bank). Nothing is saved until you review and add; the
+  message is read on the phone and never leaves it. No SMS permission is needed.
 - **AI monthly recap** — on the dashboard: the month (or year) in one read, with what to do differently next time.
 - **Journal** — a daily log with a mood, plus custom habits to tick off each day.
 - **Vault Mode** — count all income and spending against your savings pool.
@@ -190,10 +195,10 @@ only ever sees its own rows. The database schema and its hardening live in the w
 
 ### Permissions
 
-`POST_NOTIFICATIONS` (asked once, for reminders), `RECEIVE_BOOT_COMPLETED` (puts scheduled reminders back after
-a restart) and `READ_SMS` — asked for only when the user turns on bKash / Nagad messages in Settings. Google Play
-restricts `READ_SMS`: a Play listing needs the Permissions Declaration (money-management apps can qualify) or a
-build without that feature. GitHub releases aren't affected.
+`POST_NOTIFICATIONS` (asked once, for reminders) and `RECEIVE_BOOT_COMPLETED` (puts scheduled reminders back after
+a restart). No SMS permission: Play Protect blocks sideloaded apps that ask for one (1.4.0 did, for reading
+bKash / Nagad messages), so from 1.4.1 a message reaches the app only when the user shares or pastes it — the
+`SEND` / `text/plain` share target on `MainActivity`.
 
 ### Releasing
 
@@ -230,7 +235,7 @@ lib/
   data/money_db.dart   the database calls behind bills, wallets, transfers and dhar
   data/account.dart    delete account (the web's /api/account/delete)
   data/features.dart   what the app does (About the app) and what each release brought (What's new)
-  services/            reminders (local notifications), update check, what's new, home-screen widget, SMS reader
+  services/            reminders (local notifications), update check, what's new, home-screen widget, bKash / Nagad messages
   screens/wallets_screen.dart, dhar_screen.dart, sms_review_sheet.dart
   screens/about_screen.dart  About the app and the what's-new pop-up
   util/money.dart      wallet balances, next due dates, what a bill is logged as — the web's lib/money.ts
@@ -246,7 +251,7 @@ lib/
   theme/               design tokens (same values as the web's globals.css)
   widgets/             cards, buttons, segmented controls, charts, mood faces
   screens/             one screen per web page, plus the entry sheet and app shell
-android/…/MainActivity.kt   the SMS reader and widget channels
+android/…/MainActivity.kt   the share target (bKash / Nagad messages) and widget channels
 android/…/CatalystWidget.kt the home-screen widget
 build_apk.ps1          release build script (build_apk.bat to double-click)
 ```

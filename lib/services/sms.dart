@@ -1,11 +1,12 @@
-// bKash / Nagad SMS capture — opt-in, on the phone only. With the user's say-so
-// (Settings) and Android's READ_SMS permission, the app reads messages from those
-// two senders (MainActivity filters by sender before anything reaches Dart),
-// turns each confirmation into a suggested entry here on the phone, and shows
-// them for review. Nothing is sent anywhere until the user adds an entry — and
-// then only that entry, like one typed by hand. The messages themselves never
-// leave the phone.
-import 'package:flutter/foundation.dart';
+// bKash / Nagad messages -> suggested entries, on the phone only. The app has no
+// SMS permission (Play Protect blocks sideloaded apps that ask for one): a message
+// reaches it when the user shares it (Messages -> press and hold -> Share ->
+// Catalyst) or pastes it in Settings. Each confirmation is turned into a suggested
+// entry here and shown for review. Nothing is sent anywhere until the user adds
+// an entry — and then only that entry, like one typed by hand. The messages
+// themselves never leave the phone.
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -81,8 +82,10 @@ SmsAction? _action(String t) {
 }
 
 /// Read one message; null when it isn't a completed money movement (OTPs,
-/// offers, failed payments, balance checks).
-SmsTxn? parseSms(String body, {required String address, required DateTime received, required String smsId}) {
+/// offers, failed payments, balance checks). [address] is the sender when known
+/// (empty for a shared message); with [messageDate] the message's own date counts
+/// even when it's old — a shared or pasted message has no arrival time.
+SmsTxn? parseSms(String body, {required String address, required DateTime received, required String smsId, bool messageDate = false}) {
   final text = asciiDigits(body).replaceAll(RegExp(r'\s+'), ' ').trim();
   final lower = text.toLowerCase();
   if (RegExp(r'\b(otp|verification code|pin|password)\b').hasMatch(lower)) return null;
@@ -102,12 +105,19 @@ SmsTxn? parseSms(String body, {required String address, required DateTime receiv
   final d = _dateRe.firstMatch(text);
   var when = received;
   if (d != null) {
-    final parsed = DateTime(int.parse(d.group(3)!), int.parse(d.group(2)!), int.parse(d.group(1)!), int.parse(d.group(4)!), int.parse(d.group(5)!));
-    // A date that reads oddly (swapped day/month) falls back to when it arrived.
-    if (parsed.difference(received).inDays.abs() <= 3) when = parsed;
+    final day = int.parse(d.group(1)!), month = int.parse(d.group(2)!);
+    final parsed = DateTime(int.parse(d.group(3)!), month, day, int.parse(d.group(4)!), int.parse(d.group(5)!));
+    final real = parsed.month == month && parsed.day == day;
+    // A date that reads oddly (swapped day/month) falls back to when it arrived;
+    // a shared message keeps its own date unless that's in the future.
+    final fits = messageDate ? !parsed.isAfter(received.add(const Duration(days: 1))) : parsed.difference(received).inDays.abs() <= 3;
+    if (real && fits) when = parsed;
   }
+  // The sender says which wallet it was; without one (a shared message), Nagad
+  // writes "TxnID" where bKash writes "TrxID".
   final sender = '$address $lower'.toLowerCase();
-  final provider = sender.contains('nagad') ? 'Nagad' : 'bKash';
+  final nagad = sender.contains('nagad') || (address.trim().isEmpty && RegExp(r'\btxn\s?id\b').hasMatch(lower));
+  final provider = nagad ? 'Nagad' : 'bKash';
   final party = _fieldRe.firstMatch(text)?.group(1) ?? _partyRe.firstMatch(text)?.group(1) ?? '';
   return SmsTxn(
     key: trx != null ? '${provider.toLowerCase()}:${trx.toUpperCase()}' : 'sms:$smsId',
@@ -137,82 +147,85 @@ String smsNote(SmsTxn s) {
   };
 }
 
-/// The phone side: permission, the opt-in setting, and what's been handled.
-abstract final class SmsCapture {
+/// Every money message in shared or pasted text — one message, or several with a
+/// blank line between them. The same transaction twice counts once; newest first.
+List<SmsTxn> parseMessages(String text, {required DateTime now}) {
+  final all = text.trim();
+  if (all.isEmpty) return const [];
+  final out = <String, SmsTxn>{};
+  void read(String body) {
+    final s = parseSms(body, address: '', received: now, smsId: _stableId(body), messageDate: true);
+    if (s != null) out.putIfAbsent(s.key, () => s);
+  }
+
+  final parts = all.split(RegExp(r'\n\s*\n'));
+  if (parts.length > 1) parts.forEach(read);
+  if (out.isEmpty) read(all);
+  return out.values.toList()..sort((a, b) => b.when.compareTo(a.when));
+}
+
+/// The same text gives the same id on every run (FNV-1a), so a message without a
+/// transaction id is still recognised the second time it's shared.
+String _stableId(String text) {
+  var h = 0x811c9dc5;
+  for (final c in text.trim().codeUnits) {
+    h = ((h ^ c) * 0x01000193) & 0xffffffff;
+  }
+  return h.toRadixString(16);
+}
+
+/// Messages shared to the app, and which ones were already added or skipped.
+abstract final class SmsShare {
   static const _channel = MethodChannel('catalyst/sms');
-  static const _onKey = 'sms:on';
-  static const _sinceKey = 'sms:since';
   static const _seenKey = 'sms:seen';
+  static bool _listening = false;
+  static String? _waiting; // shared while nothing was listening (signed out)
 
-  /// Reads messages — tests swap in a fake inbox.
-  @visibleForTesting
-  static Future<List<Map<String, Object?>>> Function(int since) readInbox = _readInbox;
+  /// Text shared while the app is open (Share -> Catalyst) — the shell listens.
+  static final shared = StreamController<String>.broadcast();
 
-  static Future<bool> isOn() async => (await SharedPreferences.getInstance()).getBool(_onKey) ?? false;
-
-  static Future<bool> hasPermission() async {
+  /// The text the app was opened with by a share, once; null when it wasn't.
+  static Future<String?> launchText() async {
+    _listen();
+    final waiting = _waiting;
+    _waiting = null;
+    if (waiting != null) return waiting;
     try {
-      return await _channel.invokeMethod<bool>('hasPermission') ?? false;
+      return await _channel.invokeMethod<String>('sharedText');
     } on MissingPluginException {
-      return false;
+      return null;
+    } on PlatformException {
+      return null;
     }
   }
 
-  /// Turn it on: asks Android for permission; starts from the last week's messages.
-  static Future<bool> enable() async {
-    final granted = await _channel.invokeMethod<bool>('requestPermission') ?? false;
-    if (!granted) return false;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_onKey, true);
-    if (!prefs.containsKey(_sinceKey)) {
-      await prefs.setInt(_sinceKey, DateTime.now().subtract(const Duration(days: 7)).millisecondsSinceEpoch);
-    }
-    return true;
+  static void _listen() {
+    if (_listening) return;
+    _listening = true;
+    _channel.setMethodCallHandler((call) async {
+      final text = call.arguments;
+      if (call.method != 'shared' || text is! String) return;
+      if (shared.hasListener) {
+        shared.add(text);
+      } else {
+        _waiting = text;
+      }
+    });
   }
 
-  static Future<void> disable() async => (await SharedPreferences.getInstance()).setBool(_onKey, false);
-
-  /// New suggestions since the last review (nothing when it's off or not allowed).
-  static Future<List<SmsTxn>> pending() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!(prefs.getBool(_onKey) ?? false)) return const [];
-    final since = prefs.getInt(_sinceKey) ?? DateTime.now().subtract(const Duration(days: 7)).millisecondsSinceEpoch;
-    final seen = (prefs.getStringList(_seenKey) ?? const []).toSet();
-    final List<Map<String, Object?>> rows;
-    try {
-      rows = await readInbox(since);
-    } catch (e) {
-      debugPrint('[catalyst] could not read SMS: $e');
-      return const [];
-    }
-    final out = <String, SmsTxn>{};
-    for (final r in rows) {
-      final s = parseSms(
-        '${r['body'] ?? ''}',
-        address: '${r['address'] ?? ''}',
-        received: DateTime.fromMillisecondsSinceEpoch((r['date'] as num?)?.toInt() ?? 0),
-        smsId: '${r['id'] ?? ''}',
-      );
-      if (s != null && !seen.contains(s.key)) out.putIfAbsent(s.key, () => s);
-    }
-    return out.values.toList()..sort((a, b) => b.when.compareTo(a.when));
+  /// The money messages in [text]: the ones not added or skipped before, and how
+  /// many of them were.
+  static Future<({List<SmsTxn> fresh, int already})> read(String text, {DateTime? now}) async {
+    final seen = ((await SharedPreferences.getInstance()).getStringList(_seenKey) ?? const []).toSet();
+    final found = parseMessages(text, now: now ?? DateTime.now());
+    final fresh = [for (final s in found) if (!seen.contains(s.key)) s];
+    return (fresh: fresh, already: found.length - fresh.length);
   }
 
-  /// Mark suggestions handled (added or skipped) so they never come back.
+  /// Mark suggestions handled (added or skipped) so the same message isn't suggested twice.
   static Future<void> markSeen(Iterable<SmsTxn> items) async {
     final prefs = await SharedPreferences.getInstance();
     final seen = [...?prefs.getStringList(_seenKey), for (final s in items) s.key];
     await prefs.setStringList(_seenKey, seen.length > 600 ? seen.sublist(seen.length - 600) : seen);
-    final newest = items.fold<int>(0, (m, s) => s.when.millisecondsSinceEpoch > m ? s.when.millisecondsSinceEpoch : m);
-    // Move the window on, keeping a day of overlap (ids keep that from doubling up).
-    if (newest > 0) {
-      final next = newest - const Duration(days: 1).inMilliseconds;
-      if (next > (prefs.getInt(_sinceKey) ?? 0)) await prefs.setInt(_sinceKey, next);
-    }
-  }
-
-  static Future<List<Map<String, Object?>>> _readInbox(int since) async {
-    final rows = await _channel.invokeListMethod<Map<Object?, Object?>>('read', {'since': since}) ?? const [];
-    return [for (final r in rows) r.map((k, v) => MapEntry('$k', v))];
   }
 }

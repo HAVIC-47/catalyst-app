@@ -6,9 +6,9 @@
 //
 // It also runs the phone-side helpers: reminders and the home-screen widget
 // follow the data, notices (budget alerts, offline saves) show as snack bars,
-// and slim banners say when the app is offline, when a new version is out, and
-// when bKash / Nagad messages are waiting for review. The first launch after an
-// update pops up what's new.
+// and slim banners say when the app is offline and when a new version is out.
+// A bKash / Nagad message shared to the app opens for review, and the first
+// launch after an update pops up what's new.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -82,7 +82,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late final AppState _app = context.read<AppState>();
   final _subs = <StreamSubscription<Object?>>[];
   Timer? _follow;
-  List<SmsTxn> _sms = const [];
 
   @override
   void initState() {
@@ -93,7 +92,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _subs
       ..add(_app.notices.stream.listen(_notice))
       ..add(Notifications.taps.stream.listen(_open))
-      ..add(HomeWidget.actions.stream.listen(_widgetAction));
+      ..add(HomeWidget.actions.stream.listen(_widgetAction))
+      ..add(SmsShare.shared.stream.listen(_shared));
     loadLastWallet();
     WidgetsBinding.instance.addPostFrameCallback((_) => _start());
   }
@@ -115,20 +115,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _app.load();
       _checkUpdate();
-      _checkSms();
     }
   }
 
   Future<void> _start() async {
-    // Opened from a reminder or from the widget's +.
+    // Opened from a reminder, from the widget's +, or by sharing a message to the app.
     final target = Notifications.launchTarget;
     Notifications.launchTarget = null;
     if (target != null) _open(target);
     final action = await HomeWidget.launchAction();
     if (action != null) _widgetAction(action);
+    final shared = await SmsShare.launchText();
+    if (shared != null) _shared(shared);
     _checkUpdate();
-    _checkSms();
-    if (target == null && action == null) await _whatsNew();
+    if (target == null && action == null && shared == null) await _whatsNew();
     await _askForNotifications();
   }
 
@@ -183,9 +183,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         ),
       );
 
-  Future<void> _checkSms() async {
-    final found = await SmsCapture.pending();
-    if (mounted) setState(() => _sms = found);
+  /// A bKash / Nagad message shared to the app: what it would add, for review.
+  void _shared(String text) {
+    if (mounted) reviewSharedText(context, text);
   }
 
   /// Ask once for notification permission (Android 13+) when a reminder is on.
@@ -249,13 +249,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 const _TopBar(),
                 const _OfflineBanner(),
                 const _UpdateBanner(),
-                if (_sms.isNotEmpty)
-                  _Banner(
-                    icon: LucideIcons.messageSquareText,
-                    text: trn(_sms.length, '{n} new bKash / Nagad message to review', '{n} new bKash / Nagad messages to review'),
-                    action: tr('Review'),
-                    onAction: () => openSmsReview(context, _sms, onDone: _checkSms),
-                  ),
                 Expanded(child: KeyedSubtree(key: ValueKey(_section), child: pages[_section]!)),
               ],
             ),

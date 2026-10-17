@@ -1,7 +1,8 @@
-// Review what the bKash / Nagad messages say before anything is saved (see
-// services/sms.dart — they're read and parsed on the phone). Spending and income
-// become entries in that wallet; cash in / out, add money and bank transfers
-// become transfers between your wallets (a fee is logged as an expense).
+// Review what a bKash / Nagad message says before anything is saved (see
+// services/sms.dart — it's shared or pasted into the app and parsed on the phone).
+// Spending and income become entries in that wallet; cash in / out, add money and
+// bank transfers become transfers between your wallets (a fee is logged as an
+// expense).
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -15,6 +16,22 @@ import '../util/format.dart';
 import '../util/i18n.dart';
 import '../util/money.dart';
 import '../widgets/ui.dart';
+
+/// A message shared to the app or pasted: its entries for review, or why there's
+/// nothing to add.
+Future<void> reviewSharedText(BuildContext context, String text) async {
+  final found = await SmsShare.read(text);
+  if (!context.mounted) return;
+  if (found.fresh.isNotEmpty) return openSmsReview(context, found.fresh);
+  final why = text.trim().isEmpty
+      ? tr('Copy a bKash or Nagad message first, then tap Paste.')
+      : found.already > 0
+          ? tr('That message is already added.')
+          : tr("That doesn't look like a bKash or Nagad payment message.");
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(why)));
+}
 
 Future<void> openSmsReview(BuildContext context, List<SmsTxn> items, {VoidCallback? onDone}) => showModalBottomSheet<void>(
       context: context,
@@ -145,7 +162,7 @@ class _SmsReviewSheetState extends State<SmsReviewSheet> {
         _done.add(s.key);
         added++;
       }
-      await SmsCapture.markSeen(widget.items);
+      await SmsShare.markSeen(widget.items);
       widget.onDone?.call();
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
@@ -162,7 +179,7 @@ class _SmsReviewSheetState extends State<SmsReviewSheet> {
   }
 
   Future<void> _skipAll() async {
-    await SmsCapture.markSeen(widget.items);
+    await SmsShare.markSeen(widget.items);
     widget.onDone?.call();
     if (mounted) Navigator.pop(context);
   }
