@@ -79,6 +79,36 @@ void main() {
     });
   });
 
+  group('update pop-up', () {
+    tearDown(() {
+      Updates.available.value = null;
+      Updates.current = '';
+    });
+
+    test('a found update is remembered after a restart, between checks', () async {
+      Updates.readVersion = () async => '1.3.0';
+      Updates.fetchLatest = () async => _release('v9.9.9');
+      expect((await Updates.check(force: true))?.version, '9.9.9');
+      // The app restarts within the check interval: nothing is fetched, the update is still known.
+      Updates.available.value = null;
+      Updates.current = '';
+      Updates.fetchLatest = () async => throw StateError('not fetched again so soon');
+      expect((await Updates.check())?.version, '9.9.9');
+      expect(Updates.available.value?.version, '9.9.9');
+    });
+
+    test('it pops up once per version, and again a few days after "Later"', () async {
+      const u = UpdateInfo(version: '9.9.9', url: 'https://example.com/a.apk', page: 'https://example.com');
+      expect(await Updates.shouldPrompt(u), isTrue);
+      await Updates.markPrompted(u);
+      expect(await Updates.shouldPrompt(u), isFalse);
+      expect(await Updates.shouldPrompt(const UpdateInfo(version: '9.9.10', url: '', page: '')), isTrue);
+      final fourDaysAgo = DateTime.now().subtract(const Duration(days: 4)).millisecondsSinceEpoch;
+      SharedPreferences.setMockInitialValues({'update:prompted': '9.9.9|$fourDaysAgo'});
+      expect(await Updates.shouldPrompt(u), isTrue);
+    });
+  });
+
   group("what's new", () {
     Future<List<String>> due(String version, {bool updated = true}) async {
       WhatsNew.readInstall = () async => (version: version, updated: updated);
@@ -96,25 +126,33 @@ void main() {
       expect(await due('1.4.1'), isEmpty);
     });
 
+    // The patch release after [v] ("1.4.3" -> "1.4.4"): a version with no notes.
+    String nextFix(String v) {
+      final p = v.split('.');
+      return '${p[0]}.${p[1]}.${int.parse(p[2]) + 1}';
+    }
+
     test('only releases since the version last opened, newest first', () async {
+      final all = [for (final r in releases()) r.version];
       SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.3.0'});
       expect(await due('1.4.0'), ['1.4.0']);
-      SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.4.0'});
-      expect(await due('1.4.1'), ['1.4.1']);
-      SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.4.1'});
-      expect(await due('1.4.2'), ['1.4.2']);
-      SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.4.2'});
-      expect(await due('1.4.3'), isEmpty); // a fix with no notes
-      SharedPreferences.setMockInitialValues({'whatsnew:seen': '1.5.0'});
+      for (var i = all.length - 1; i > 0; i--) {
+        SharedPreferences.setMockInitialValues({'whatsnew:seen': all[i]});
+        expect(await due(all[i - 1]), [all[i - 1]]);
+      }
+      SharedPreferences.setMockInitialValues({'whatsnew:seen': all.first});
+      expect(await due(nextFix(all.first)), isEmpty); // a fix with no notes
+      SharedPreferences.setMockInitialValues({'whatsnew:seen': '9.0.0'});
       expect(await due('1.4.0'), isEmpty); // going back a version
     });
 
     test('About shows the notes of the installed version', () {
-      expect(releaseFor('1.4.0')?.version, '1.4.0');
-      expect(releaseFor('1.4.1')?.version, '1.4.1');
-      expect(releaseFor('1.4.2')?.version, '1.4.2');
-      expect(releaseFor('1.4.3')?.version, '1.4.2');
-      expect(releaseFor('')?.version, releases().first.version);
+      for (final r in releases()) {
+        expect(releaseFor(r.version)?.version, r.version);
+      }
+      final newest = releases().first.version;
+      expect(releaseFor(nextFix(newest))?.version, newest);
+      expect(releaseFor('')?.version, newest);
       expect(releaseFor('1.3.0'), isNull);
     });
 

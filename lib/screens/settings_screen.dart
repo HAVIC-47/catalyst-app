@@ -31,8 +31,9 @@ const _swatches = [
   '#4C5B82', '#8E5B6E', '#A6694A', '#2F6F6B', '#6E8C46', '#7A746A',
 ];
 
-/// The settings pages, each opened from its row in Settings.
-enum SettingsPage { language, reminders, dashboard, categories, sms, account }
+/// The settings pages, each opened from its row in Settings (the two category
+/// pages from the Categories page).
+enum SettingsPage { language, reminders, dashboard, categories, expenseCategories, incomeCategories, sms, account }
 
 /// Open one settings page on top of the app (the dashboard's "Customize" opens
 /// the dashboard sections straight away).
@@ -198,9 +199,24 @@ class _SettingsPageView extends StatelessWidget {
               style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
             ),
             const SizedBox(height: 14),
-            const _CategorySection(kind: Kind.expense),
-            const SizedBox(height: 14),
-            const _CategorySection(kind: Kind.income),
+            _HubCard(children: [
+              for (final (kind, page, icon, title) in [
+                (Kind.expense, SettingsPage.expenseCategories, LucideIcons.arrowUpRight, tr('Expense categories')),
+                (Kind.income, SettingsPage.incomeCategories, LucideIcons.arrowDownLeft, tr('Income categories')),
+              ])
+                _HubRow(
+                  icon: icon,
+                  title: title,
+                  hint: trn(app.categories.where((c) => c.kind == kind).length, '{n} category', '{n} categories'),
+                  onTap: () => openSettingsPage(context, page),
+                ),
+            ]),
+          ],
+        ),
+      SettingsPage.expenseCategories || SettingsPage.incomeCategories => (
+          page == SettingsPage.expenseCategories ? tr('Expense categories') : tr('Income categories'),
+          <Widget>[
+            _CategorySection(kind: page == SettingsPage.expenseCategories ? Kind.expense : Kind.income),
             if (app.categories.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
@@ -503,6 +519,115 @@ class _SmsSection extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------- account
+/// Change the password: the current one, then the new one twice. Google-only
+/// accounts have no password to change — they're pointed to "Forgot password?".
+class _PasswordChange extends StatefulWidget {
+  const _PasswordChange();
+
+  @override
+  State<_PasswordChange> createState() => _PasswordChangeState();
+}
+
+class _PasswordChangeState extends State<_PasswordChange> {
+  final _current = TextEditingController();
+  final _next = TextEditingController();
+  final _again = TextEditingController();
+  bool _open = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _current.dispose();
+    _next.dispose();
+    _again.dispose();
+    super.dispose();
+  }
+
+  void _close() => setState(() {
+        _open = false;
+        _error = null;
+        _current.clear();
+        _next.clear();
+        _again.clear();
+      });
+
+  Future<void> _save() async {
+    if (_busy) return;
+    final String? problem = _current.text.isEmpty
+        ? tr('Type your current password.')
+        : _next.text.length < 8
+            ? tr('Use at least 8 characters.')
+            : _next.text != _again.text
+                ? tr("The two passwords don't match.")
+                : null;
+    if (problem != null) return setState(() => _error = problem);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await changePassword(current: _current.text, next: _next.text);
+      if (!mounted) return;
+      _close();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Password changed.'))));
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    if (isConfigured && !accountHasPassword()) {
+      return Text(
+        tr('You sign in with Google, so there\'s no password to change. To add one, sign out and use "Forgot password?" on the login screen.'),
+        style: bodyStyle(p, 12.5, color: p.muted(0.5), height: 1.45),
+      );
+    }
+    if (!_open) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: HairlineButton(
+          height: 40,
+          onPressed: () => setState(() => _open = true),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(LucideIcons.keyRound, size: 15, color: p.muted(0.7)),
+            const SizedBox(width: 8),
+            Text(tr('Change password'), style: bodyStyle(p, 13.5, color: p.muted(0.8))),
+          ]),
+        ),
+      );
+    }
+    InputDecoration field(String hint) => InputDecoration(hintText: hint, prefixIcon: Icon(LucideIcons.lock, size: 16, color: p.muted(0.35)));
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(tr('Change password'), style: bodyStyle(p, 14, weight: FontWeight.w600)),
+        const SizedBox(height: 10),
+        TextField(controller: _current, obscureText: true, autofillHints: const [AutofillHints.password], decoration: field(tr('Current password'))),
+        const SizedBox(height: 10),
+        TextField(controller: _next, obscureText: true, autofillHints: const [AutofillHints.newPassword], decoration: field(tr('New password (min 8)'))),
+        const SizedBox(height: 10),
+        TextField(controller: _again, obscureText: true, onSubmitted: (_) => _save(), decoration: field(tr('Type it again'))),
+        if (_error != null) ...[
+          const SizedBox(height: 10),
+          Text(_error!, style: bodyStyle(p, 12.5, color: p.expense, height: 1.4)),
+        ],
+        const SizedBox(height: 12),
+        Row(children: [
+          TextButton(onPressed: _busy ? null : _close, child: Text(tr('Cancel'), style: bodyStyle(p, 13.5, color: p.muted(0.6)))),
+          const Spacer(),
+          Flexible(child: PrimaryButton(label: tr('Change password'), height: 42, busy: _busy, onPressed: _save)),
+        ]),
+      ]),
+    );
+  }
+}
+
 class _AccountSection extends StatefulWidget {
   const _AccountSection();
 
@@ -553,9 +678,11 @@ class _AccountSectionState extends State<_AccountSection> {
         CardTitle(tr('Your'), tr('account')),
         const SizedBox(height: 4),
         Text(
-          tr('Signed in as {email}. To change your password, sign out and use "Forgot password?" on the login screen.', {'email': email ?? '…'}),
+          tr('Signed in as {email}.', {'email': email ?? '…'}),
           style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
         ),
+        const SizedBox(height: 14),
+        const _PasswordChange(),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(12),
@@ -744,7 +871,8 @@ class _CategorySectionState extends State<_CategorySection> {
       if (n.isEmpty || _busy) return;
       setState(() => _busy = true);
       try {
-        await app.createCategory(name: n, kind: widget.kind, color: _color, sort: list.length);
+        final first = list.isEmpty ? 0 : list.map((c) => c.sort).reduce((a, b) => a < b ? a : b) - 1;
+        await app.createCategory(name: n, kind: widget.kind, color: _color, sort: first);
         _name.clear();
       } catch (e) {
         if (context.mounted) showError(context, e);
@@ -759,7 +887,7 @@ class _CategorySectionState extends State<_CategorySection> {
       try {
         final defaults = widget.kind == Kind.expense ? defaultExpenseCategories : defaultIncomeCategories;
         final have = {for (final c in list) c.name.toLowerCase()};
-        var i = list.length;
+        var i = list.isEmpty ? 0 : list.map((c) => c.sort).reduce((a, b) => a > b ? a : b) + 1;
         for (final d in defaults) {
           if (have.contains(d.$1.toLowerCase())) continue;
           await app.createCategory(name: d.$1, kind: widget.kind, color: d.$2, sort: i++);
@@ -784,8 +912,6 @@ class _CategorySectionState extends State<_CategorySection> {
             Label('${list.length}'),
           ]),
           const SizedBox(height: 8),
-          for (final c in list) _CategoryRow(key: ValueKey(c.id), category: c),
-          const SizedBox(height: 6),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -826,6 +952,8 @@ class _CategorySectionState extends State<_CategorySection> {
               ],
             ),
           ),
+          const SizedBox(height: 8),
+          for (final c in list) _CategoryRow(key: ValueKey(c.id), category: c),
         ],
       ),
     );

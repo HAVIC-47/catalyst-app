@@ -1,7 +1,8 @@
 // About the app (Settings → About the app): the version and updates, what's new
 // in this version, then everything the Android app does (lib/data/features.dart).
-// The same "what's new" pops up once after each update — showWhatsNew, called by
-// the shell.
+// The same "what's new" pops up once after each update (showWhatsNew), and a
+// newer version on GitHub pops up with an Update button (showUpdateDialog) — both
+// called by the shell.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -186,6 +187,72 @@ class FeatureRow extends StatelessWidget {
           ]),
         ),
       ]),
+    );
+  }
+}
+
+/// The pop-up when a newer version is out: Update starts the APK download.
+Future<void> showUpdateDialog(BuildContext context, UpdateInfo update) =>
+    showDialog<void>(context: context, builder: (_) => UpdateDialog(update: update));
+
+class UpdateDialog extends StatelessWidget {
+  const UpdateDialog({super.key, required this.update});
+
+  final UpdateInfo update;
+
+  Future<void> _download(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    if (!await Updates.download(update)) {
+      messenger.showSnackBar(SnackBar(content: Text(tr("Couldn't open the download — get it from {url}", {'url': latestApkUrl}))));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: p.line)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              const BrandLogo(size: 44),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Label(tr('Update available'), color: p.accent),
+                  const SizedBox(height: 2),
+                  Text(tr('Catalyst {version}', {'version': update.version}), style: displayStyle(p, 24)),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 14),
+            Text(
+              tr('You have {current}. Update downloads the new version — open the file when it finishes and install it '
+                  "over this one. Your data stays, and you'll see what's new once it's installed.", {'current': Updates.current}),
+              style: bodyStyle(p, 14, color: p.muted(0.6), height: 1.5),
+            ),
+            const SizedBox(height: 18),
+            Row(children: [
+              Expanded(
+                child: HairlineButton(
+                  height: 44,
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(tr('Later'), maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 14, color: p.muted(0.8))),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: PrimaryButton(icon: LucideIcons.download, label: tr('Update'), height: 44, expand: true, onPressed: () => _download(context)),
+              ),
+            ]),
+          ]),
+        ),
+      ),
     );
   }
 }

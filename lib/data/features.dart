@@ -32,6 +32,16 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.4.3', [
+        Feature(LucideIcons.download, tr('Updates pop up'), tr('When a new version is out, the app tells you right away — Update starts the download.')),
+        Feature(LucideIcons.keyRound, tr('Change your password'), tr('Settings → Account: your current password, then the new one.')),
+        Feature(
+          LucideIcons.tags,
+          tr('Categories, newest first'),
+          tr('Expense and Income each have their own page, the box for a new one is at the top, and a new category comes '
+              'first everywhere.'),
+        ),
+      ]),
       Release('1.4.2', [
         if (googleSignIn)
           Feature(LucideIcons.keyRound, tr('Continue with Google'), tr('Sign in with your Google account — no password to remember.')),

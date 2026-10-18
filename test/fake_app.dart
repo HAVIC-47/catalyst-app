@@ -66,7 +66,7 @@ class FakeApp extends AppState {
   @override
   Future<Category> createCategory({required String name, required Kind kind, required String color, required int sort}) async {
     final c = Category(id: _next('cat'), name: name, kind: kind, color: color, sort: sort);
-    categories = [...categories, c];
+    categories = orderCategories([...categories, c]);
     notifyListeners();
     return c;
   }

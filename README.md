@@ -55,7 +55,11 @@ modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalys
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 From 1.4.0 the app tells you when a new version is out: tap **Update** and the new APK downloads.
 
-**New in 1.4.2:** **Continue with Google** on the login screen; **Settings** is a short list now, each part
+**New in 1.4.3:** a new version **pops up** with an **Update** button that starts the download; **change your
+password** in Settings → Account; and **categories** have an Expense and an Income page, with the box for a new one
+on top and new categories coming first everywhere.
+
+**1.4.2:** **Continue with Google** on the login screen; **Settings** is a short list now, each part
 (language and currency, reminders, dashboard, categories, bKash & Nagad, About the app, account) on its own page;
 and **four new home-screen widgets** — this month, wallets, bills due, and a mood check-in you tap to log.
 
@@ -151,14 +155,15 @@ pull down to refresh, or just reopen the app.
 - **Vault Mode** — count all income and spending against your savings pool.
 - **Currency** — taka by default; Settings switches how amounts are written (dollar, Canadian dollar, euro, rupee…).
 - **বাংলা** — the whole app in Bangla, with Bengali dates and digits (Settings → Language, or on the login screen).
-- **Account** — forgot password (the email's link opens the app to set a new one), optional Google sign-in,
-  and Delete account (Settings).
-- **Updates** — a banner when a new version is on GitHub; **Update** downloads it. The first launch after an update
-  pops up what's new.
+- **Account** — change password (Settings → Account: the current one, then the new one), forgot password (the
+  email's link opens the app to set a new one), optional Google sign-in, and Delete account.
+- **Updates** — when a new version is on GitHub the app pops up (once per version, again a few days after
+  **Later**) and shows a banner; **Update** starts the download. The first launch after an update pops up what's new.
 - **About the app** — everything the app does, with what's new in this version on top, plus the version and
   **Check for updates**.
 - **Settings** — a short list that says how each thing is set (language and currency, reminders, dashboard,
-  categories, bKash & Nagad, About the app, account); each opens its own page.
+  categories, bKash & Nagad, About the app, account); each opens its own page. Categories has an Expense and an
+  Income page; a new category is added at the top and comes first everywhere.
 - **Dark and light themes** — dark by default, the same design as the web.
 
 ## Build from source

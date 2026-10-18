@@ -307,6 +307,81 @@ void main() {
     expect(good, findsOneWidget);
   });
 
+  testWidgets('Categories: Expense and Income pages; a new one goes on top', (tester) async {
+    await _tall(tester);
+    final app = _app(FakeMoneyDb());
+    await tester.pumpWidget(host(app, const SettingsScreen()));
+    await tester.pump();
+    await tester.tap(find.text('Categories'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 categories'), findsOneWidget); // Expense: Utilities, Other
+    await tester.tap(find.text('Expense categories'));
+    await tester.pumpAndSettle();
+    // The box for a new category sits above the list.
+    final box = find.byWidgetPredicate((w) => w is TextField && (w.decoration?.hintText ?? '').startsWith('New '));
+    expect(tester.getTopLeft(box).dy, lessThan(tester.getTopLeft(find.byWidgetPredicate((w) => w is EditableText && w.controller.text == 'Utilities')).dy));
+    await tester.enterText(box, 'Pets');
+    await tester.pump(); // the add button wakes up once there's a name
+    await tester.tap(find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Add category'));
+    await tester.pumpAndSettle();
+    final expense = app.categories.where((c) => c.kind == Kind.expense).toList();
+    expect(expense.first.name, 'Pets'); // first everywhere, not last
+    expect(expense.first.sort, lessThan(expense[1].sort));
+  });
+
+  testWidgets('Account: change password checks the new one before anything is sent', (tester) async {
+    await _tall(tester);
+    await tester.pumpWidget(host(_app(FakeMoneyDb()), const SettingsScreen()));
+    await tester.pump();
+    await tester.tap(find.text('Account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Change password'));
+    await tester.pumpAndSettle();
+    Future<void> attempt(String current, String next, String again) async {
+      await tester.enterText(find.widgetWithText(TextField, 'Current password'), current);
+      await tester.enterText(find.widgetWithText(TextField, 'New password (min 8)'), next);
+      await tester.enterText(find.widgetWithText(TextField, 'Type it again'), again);
+      await tester.tap(find.widgetWithText(PrimaryButton, 'Change password'));
+      await tester.pump();
+    }
+
+    await attempt('', 'longenough', 'longenough');
+    expect(find.text('Type your current password.'), findsOneWidget);
+    await attempt('old-password', 'short', 'short');
+    expect(find.text('Use at least 8 characters.'), findsOneWidget);
+    await attempt('old-password', 'longenough', 'different1');
+    expect(find.text("The two passwords don't match."), findsOneWidget);
+  });
+
+  testWidgets('a newer version pops up with Update; Later closes it, and it stays away for that version', (tester) async {
+    await _tall(tester);
+    _phoneChannels();
+    Updates.readVersion = () async => '1.4.3';
+    Updates.fetchLatest = () async => {'tag_name': 'v9.9.9', 'draft': false, 'prerelease': false, 'assets': const []};
+    addTearDown(() {
+      Updates.available.value = null;
+      Updates.current = '';
+    });
+    final theme = await ThemeController.load();
+    Widget shell() => MultiProvider(
+          providers: [ChangeNotifierProvider.value(value: theme), ChangeNotifierProvider<AppState>.value(value: _app(FakeMoneyDb()))],
+          child: MaterialApp(theme: buildTheme(Palette.night), home: const AppShell()),
+        );
+    await tester.pumpWidget(shell());
+    await tester.pumpAndSettle();
+    expect(find.byType(UpdateDialog), findsOneWidget);
+    expect(find.text('Catalyst 9.9.9'), findsOneWidget);
+    expect(find.widgetWithText(PrimaryButton, 'Update'), findsOneWidget);
+    await tester.tap(find.text('Later'));
+    await tester.pumpAndSettle();
+    expect(find.byType(UpdateDialog), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(shell());
+    await tester.pumpAndSettle();
+    expect(find.byType(UpdateDialog), findsNothing); // said once for this version
+  });
+
   testWidgets('Settings: Paste a message reads a copied bKash message', (tester) async {
     await _tall(tester);
     String? copied;

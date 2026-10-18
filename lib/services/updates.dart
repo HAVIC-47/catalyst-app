@@ -1,7 +1,9 @@
 // New-version check. Releases are published on GitHub (HAVIC-47/catalyst-app);
-// when the latest one is newer than this install, the app shows a banner (and a
-// notification once per version). "Update" opens the release's APK in the
-// browser, which downloads it — Android then offers to install it over this one.
+// when the latest one is newer than this install, the app pops up (once per
+// version, again a few days after "Later") and shows a banner. "Update" opens the
+// release's APK in the browser, which downloads it — Android then offers to
+// install it over this one. A found update is remembered, so a restart between
+// checks still shows it.
 import 'dart:async';
 import 'dart:convert';
 
@@ -32,7 +34,10 @@ abstract final class Updates {
   static const _checkedKey = 'update:checked';
   static const _dismissedKey = 'update:dismissed';
   static const _notifiedKey = 'update:notified';
+  static const _latestKey = 'update:latest';
+  static const _promptedKey = 'update:prompted';
   static const _every = Duration(hours: 6);
+  static const _promptAgain = Duration(days: 3);
 
   /// Fetches the latest release's JSON — tests swap in an answer.
   @visibleForTesting
@@ -52,15 +57,17 @@ abstract final class Updates {
       final prefs = await SharedPreferences.getInstance();
       await version();
       final last = prefs.getInt(_checkedKey) ?? 0;
-      if (!force && DateTime.now().millisecondsSinceEpoch - last < _every.inMilliseconds) return available.value;
+      if (!force && DateTime.now().millisecondsSinceEpoch - last < _every.inMilliseconds) return _remembered(prefs);
       final json = await fetchLatest();
-      if (json == null) return available.value;
+      if (json == null) return _remembered(prefs);
       await prefs.setInt(_checkedKey, DateTime.now().millisecondsSinceEpoch);
       final info = parseRelease(json);
       if (info == null || !isNewer(info.version, current)) {
         available.value = null;
+        await prefs.remove(_latestKey);
         return null;
       }
+      await prefs.setString(_latestKey, jsonEncode({'version': info.version, 'url': info.url, 'page': info.page}));
       if (prefs.getString(_notifiedKey) != info.version) {
         await prefs.setString(_notifiedKey, info.version);
         onNew?.call(info);
@@ -73,6 +80,30 @@ abstract final class Updates {
       return available.value;
     }
   }
+
+  /// The update found by an earlier check, while it's still newer than this install.
+  static UpdateInfo? _remembered(SharedPreferences prefs) {
+    try {
+      final j = jsonDecode(prefs.getString(_latestKey) ?? '');
+      if (j is! Map || !isNewer('${j['version']}', current)) return available.value;
+      final info = UpdateInfo(version: '${j['version']}', url: '${j['url']}', page: '${j['page']}');
+      if (available.value == null && prefs.getString(_dismissedKey) != info.version) available.value = info;
+      return info;
+    } catch (_) {
+      return available.value;
+    }
+  }
+
+  /// Whether to pop up [u] now: once per version, and again a few days after "Later".
+  static Future<bool> shouldPrompt(UpdateInfo u) async {
+    final seen = ((await SharedPreferences.getInstance()).getString(_promptedKey) ?? '').split('|');
+    if (seen.length != 2 || seen[0] != u.version) return true;
+    final at = int.tryParse(seen[1]) ?? 0;
+    return DateTime.now().millisecondsSinceEpoch - at > _promptAgain.inMilliseconds;
+  }
+
+  static Future<void> markPrompted(UpdateInfo u) async =>
+      (await SharedPreferences.getInstance()).setString(_promptedKey, '${u.version}|${DateTime.now().millisecondsSinceEpoch}');
 
   static Future<void> dismiss(UpdateInfo u) async {
     available.value = null;

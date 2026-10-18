@@ -114,7 +114,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _app.load();
-      _checkUpdate();
+      unawaited(_checkUpdate());
     }
   }
 
@@ -127,9 +127,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (action != null) _widgetAction(action);
     final shared = await SmsShare.launchText();
     if (shared != null) _shared(shared);
-    _checkUpdate();
     if (target == null && action == null && shared == null) await _whatsNew();
     await _askForNotifications();
+    await _checkUpdate();
   }
 
   /// Once after an update: what it brought (and, if asked, every feature).
@@ -188,14 +188,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  void _checkUpdate() => Updates.check(
-        onNew: (u) => Notifications.showNow(
-          5000,
-          tr('Catalyst {version} is out', {'version': u.version}),
-          tr('Tap to download the update.'),
-          NoticeTarget.update,
-        ),
-      );
+  /// A newer version on GitHub pops up (once per version, again a few days after
+  /// "Later"), Update starting the download; the banner stays until dismissed.
+  /// Never on top of a sheet or another pop-up.
+  Future<void> _checkUpdate() async {
+    final u = await Updates.check();
+    if (u == null || !mounted || !(ModalRoute.of(context)?.isCurrent ?? false)) return;
+    if (!await Updates.shouldPrompt(u) || !mounted) return;
+    await Updates.markPrompted(u);
+    if (mounted) await showUpdateDialog(context, u);
+  }
 
   /// A bKash / Nagad message shared to the app: what it would add, for review.
   void _shared(String text) {

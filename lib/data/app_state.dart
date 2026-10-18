@@ -19,6 +19,16 @@ import 'repo.dart';
 const _dashboardHiddenKey = 'dashboardHidden';
 final _sectionIds = {for (final s in dashboardSections) s.$1};
 
+/// Categories in the database's order: by kind, then their sort number, then
+/// name. A new category gets the lowest number of its kind, so it comes first.
+List<Category> orderCategories(Iterable<Category> list) => [...list]
+  ..sort((a, b) {
+    final kind = a.kind.name.compareTo(b.kind.name);
+    if (kind != 0) return kind;
+    final sort = a.sort.compareTo(b.sort);
+    return sort != 0 ? sort : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+  });
+
 /// Reminder settings — in the account's preferences, so the web, this app and
 /// the web's reminders job all follow the same ones (the web's lib/reminders.ts).
 class ReminderPrefs {
@@ -590,7 +600,7 @@ class AppState extends ChangeNotifier {
   // ---- categories
   Future<Category> createCategory({required String name, required Kind kind, required String color, required int sort}) async {
     final x = await Repo.addCategory(name: name, kind: kind, color: color, sort: sort);
-    categories = [...categories, x];
+    categories = orderCategories([...categories, x]);
     notifyListeners();
     return x;
   }
