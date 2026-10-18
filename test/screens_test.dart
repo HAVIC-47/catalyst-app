@@ -1,6 +1,6 @@
 // The new pages: Wallets (balances, transfers with a fee), Dhar (people, part
 // payments, settling), Bills (pay -> expense + next due date, Undo), Settings
-// (language, currency, reminders), About the app and the what's-new pop-up, and a
+// (language, currency, notifications), About the app and the what's-new pop-up, and a
 // bKash message shared to the app or pasted in Settings.
 import 'package:catalyst/data/app_state.dart';
 import 'package:catalyst/data/insights.dart';
@@ -171,7 +171,7 @@ void main() {
     expect(app.bills.single.dueOn, toDateKey(due));
   });
 
-  testWidgets('Settings: a list of pages — language, currency and reminders', (tester) async {
+  testWidgets('Settings: a list of pages — language, currency and notifications', (tester) async {
     await _tall(tester);
     final app = _app(FakeMoneyDb());
     await tester.pumpWidget(host(app, const SettingsScreen()));
@@ -191,14 +191,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(r'English · C$ Canadian dollar'), findsOneWidget);
 
-    await tester.tap(find.text('Reminders'));
+    await tester.tap(find.text('Notifications'));
     await tester.pumpAndSettle();
     await tester.tap(find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Bills').first);
     await tester.pump();
     expect(app.reminders.bills, isFalse);
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('3 of 4 on'), findsOneWidget);
+    expect(find.textContaining('8 of 9 on'), findsOneWidget);
 
     await tester.tap(find.text('Language & currency'));
     await tester.pumpAndSettle();

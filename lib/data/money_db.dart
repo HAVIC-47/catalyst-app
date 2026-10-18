@@ -1,6 +1,7 @@
-// The database calls behind bills, wallets, transfers and dhar, as one object
-// AppState holds — so tests can stand in a fake and check the rules (a bill
-// payment rolls the bill on, a paid-off debt closes itself…) without a server.
+// The database calls behind bills, wallets, transfers, dhar, recurring entries
+// and challenges, as one object AppState holds — so tests can stand in a fake and
+// check the rules (a bill payment rolls the bill on, a paid-off debt closes
+// itself, a recurring date is logged once…) without a server.
 import '../models.dart';
 import 'repo.dart';
 
@@ -63,4 +64,15 @@ class MoneyDb {
       Repo.addDebtPayment(debtId: debtId, amount: amount, walletId: walletId, paidOn: paidOn);
 
   Future<void> deleteDebtPayment(String id) => Repo.deleteDebtPayment(id);
+
+  Future<RecurringRule> addRecurring(Map<String, dynamic> row) => Repo.addRecurring(row);
+  Future<void> updateRecurring(String id, Map<String, dynamic> patch) => Repo.updateRecurring(id, patch);
+  Future<void> deleteRecurring(String id) => Repo.deleteRecurring(id);
+
+  /// Null when the date was already logged (by the web, the reminders job or another phone).
+  Future<Txn?> logRecurring(String ruleId, String date, NewTxn t) => Repo.logRecurring(ruleId, date, t);
+  Future<void> advanceRecurring(String id, String nextOn) => Repo.advanceRecurring(id, nextOn);
+
+  Future<Challenge> addChallenge(Challenge c) => Repo.addChallenge(c);
+  Future<void> deleteChallenge(String id) => Repo.deleteChallenge(id);
 }

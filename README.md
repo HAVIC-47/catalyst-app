@@ -55,7 +55,14 @@ modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalys
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 From 1.4.0 the app tells you when a new version is out: tap **Update** and the new APK downloads.
 
-**New in 1.4.3:** a new version **pops up** with an **Update** button that starts the download; **change your
+**New in 1.5.0:** **recurring income and expenses** — salary on the 1st, rent, subscriptions: pick the day
+(weekly, every 2 weeks, twice a month, monthly, every 3 months, yearly) and the time, and each one is added to your
+ledger by itself, with a notification; **mood-spend alerts** when a low day comes with a lot more spending than
+usual; **streaks and challenges** (no-spend days, spending under an amount, skipping a category, saving, logging
+every day) with notifications; a **zakat calculator**; **net worth over time** on the dashboard; and
+**Settings → Notifications**, where you turn off any kind of notification you don't want.
+
+**1.4.3:** a new version **pops up** with an **Update** button that starts the download; **change your
 password** in Settings → Account; and **categories** have an Expense and an Income page, with the box for a new one
 on top and new categories coming first everywhere.
 
@@ -94,8 +101,8 @@ the memo scanner and Journal now lives in More. Install it over the older versio
 
 The app talks to the **same Supabase backend** as the [web app](https://github.com/HAVIC-47/catalyst)
 ([live](https://catalyst-hishab.vercel.app)). Log in with the same email and you see the same
-transactions, moods, budgets, goals, bills, wallets, dhar, journal and boards — and the same settings
-(language, currency, reminders, dashboard sections). Anything added on one shows up on the other —
+transactions, moods, budgets, goals, bills, recurring entries, challenges, wallets, dhar, journal and boards — and
+the same settings (language, currency, notifications, dashboard sections, the zakat figures). Anything added on one shows up on the other —
 pull down to refresh, or just reopen the app.
 
 ## Features
@@ -105,8 +112,9 @@ pull down to refresh, or just reopen the app.
   is a 12-month heatmap. Tap any day to log money or mood.
 - **Dashboard** — this month's spent / earned / saved / average mood, a mood × money trend (net cash
   flow bars against the mood line, with correlation), and charts for spending and income by category,
-  mood distribution, savings, mood tags and category frequency. Choose which sections to show in
-  Settings — the choice is shared with the web app.
+  mood distribution, savings, mood tags and category frequency, plus **net worth over time** (what's in your
+  wallets plus dhar owed to you, minus dhar you owe, at the end of each month) and your streak with the challenges
+  going. Choose which sections to show in Settings — the choice is shared with the web app.
 - **Ledger** — every transaction grouped by day, with search (note, category, place, amount, even
   "october" or "monday") and filters by type, period or date range, category and amount. Tap the pen on
   any transaction to change its type, amount, category, date, time, place or note (or delete it) — every
@@ -132,13 +140,28 @@ pull down to refresh, or just reopen the app.
 - **Bills** — due dates, recurrence, overdue / due-soon warnings. Tick a bill when you pay it: the expense goes
   into the ledger (its category, from its wallet) and a repeating bill moves to its next due date — Undo takes
   both back.
+- **Recurring income and expenses** — salary on the 1st, rent, subscriptions (More → Recurring). Set the name,
+  income or expense, amount, category, wallet and how often — every week or two, twice a month on two days, every
+  month on a day, every 3 months or every year — at a time of day, from a start date (an earlier start fills in
+  the dates since) to an optional end. Each date is added to the ledger by itself: by the app or the web when open,
+  or by the web's hourly job when neither is — never twice — and the phone notifies you at that time. Pause,
+  edit or delete one any time; entries it already added stay.
 - **Wallets** — where the money sits: Cash, bKash, Nagad and Bank to start (rename, add, archive). Each shows what's
   in it now; every entry picks its wallet; transfers move money between wallets without counting as spending, and
   a fee (a bKash cash-out) is logged as an expense.
 - **Dhar / baki** — money you lent or borrowed, grouped by person: part payments, settle in full, write off.
-- **Reminders** — scheduled on the phone, so they work offline: an evening "how was today?" when no mood is logged,
-  the day before a bill or dhar is due, and budget alerts. Settings has the switches and the check-in time (shared
-  with the web).
+- **Zakat calculator** — More → Zakat: your wallets and dhar come in by themselves; add cash elsewhere, gold and
+  silver (in bhori or grams, at today's price), investments and debts due now. It shows the nisab (silver or gold)
+  and the 2.5% due, and **Log it as paid** adds it to the ledger. The figures are kept with your account.
+- **Streaks and challenges** — More → Challenges: a streak for every day you log something (with the last 28 days
+  at a glance), and challenges — no-spend days, spending under an amount, skipping a category, saving an amount or
+  logging every day, for 3 to 30 days. Automatic entries don't count as spending. Mood & money shows what a low day
+  costs next to a good one.
+- **Mood-spend alerts** — a notification when a low-mood day comes with at least 1.5× your usual spending.
+- **Notifications** — scheduled on the phone, so they work offline: an evening "how was today?" when no mood is
+  logged, the day before a bill or dhar is due, budget alerts, each recurring entry, a streak about to end, a
+  challenge's last day, and milestones and wins. Settings → Notifications turns each kind on or off (shared with
+  the web), with the check-in time.
 - **Offline** — the app keeps a copy of your data on the phone, so it opens on everything with no connection. Money
   entries and moods you add (or edit, or delete) offline — for any day, month or year — wait on the phone and sync
   in order once you're back online; a banner shows what's waiting.
@@ -161,7 +184,7 @@ pull down to refresh, or just reopen the app.
   **Later**) and shows a banner; **Update** starts the download. The first launch after an update pops up what's new.
 - **About the app** — everything the app does, with what's new in this version on top, plus the version and
   **Check for updates**.
-- **Settings** — a short list that says how each thing is set (language and currency, reminders, dashboard,
+- **Settings** — a short list that says how each thing is set (language and currency, notifications, dashboard,
   categories, bKash & Nagad, About the app, account); each opens its own page. Categories has an Expense and an
   Income page; a new category is added at the top and comes first everywhere.
 - **Dark and light themes** — dark by default, the same design as the web.
@@ -247,13 +270,17 @@ lib/
   data/secure_session_storage.dart  login session in Keystore-encrypted storage
   data/insights.dart   AI summaries client (the web's /api/ai-insights)
   data/offline.dart    offline copy of the data + the outbox for entries made offline
-  data/money_db.dart   the database calls behind bills, wallets, transfers and dhar
+  data/money_db.dart   the database calls behind bills, wallets, transfers, dhar, recurring entries and challenges
   data/account.dart    delete account (the web's /api/account/delete)
   data/features.dart   what the app does (About the app) and what each release brought (What's new)
   services/            reminders (local notifications), update check, what's new, home-screen widget, bKash / Nagad messages
   screens/wallets_screen.dart, dhar_screen.dart, sms_review_sheet.dart
   screens/about_screen.dart  About the app and the what's-new pop-up
   util/money.dart      wallet balances, next due dates, what a bill is logged as — the web's lib/money.ts
+  util/recurring.dart  when each recurring entry falls due — the web's lib/recurring.ts
+  util/habits.dart     streaks, challenges and mood-spend alerts — the web's lib/habits.ts
+  util/networth.dart, util/zakat.dart  net worth over time and the zakat sums — the web's lib/networth.ts, lib/zakat.ts
+  screens/recurring_screen.dart, challenges_screen.dart, zakat_screen.dart
   util/i18n.dart       tr() and Bengali digits; util/bn.dart holds the Bangla text
   util/currency.dart   the account's currency
   data/scan.dart       photo picker + the web's photo readers (/api/scan-memo, /api/scan-list)

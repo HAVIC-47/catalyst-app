@@ -107,4 +107,44 @@ class FakeMoneyDb implements MoneyDb {
 
   @override
   Future<void> deleteDebtPayment(String id) async => calls.add('deleteDebtPayment $id');
+
+  // ---- recurring entries: one entry per rule and date, like the database's unique pair
+  final logged = <String>{};
+
+  /// Dates another device logged first (the insert comes back refused).
+  final loggedElsewhere = <String>{};
+
+  @override
+  Future<RecurringRule> addRecurring(Map<String, dynamic> row) async {
+    calls.add('addRecurring ${row['name']} next ${row['next_on']}');
+    return RecurringRule.fromRow({...row, 'id': _next('r'), 'created_at': ''});
+  }
+
+  @override
+  Future<void> updateRecurring(String id, Map<String, dynamic> patch) async => calls.add('updateRecurring $id $patch');
+
+  @override
+  Future<void> deleteRecurring(String id) async => calls.add('deleteRecurring $id');
+
+  @override
+  Future<Txn?> logRecurring(String ruleId, String date, NewTxn t) async {
+    if (loggedElsewhere.contains('$ruleId $date') || !logged.add('$ruleId $date')) {
+      calls.add('logRecurring $ruleId $date (already there)');
+      return null;
+    }
+    calls.add('logRecurring $ruleId $date');
+    return Txn.fromRow({...t.toRow(), 'id': _next('tx'), 'created_at': '', 'recurring_id': ruleId, 'recurring_on': date});
+  }
+
+  @override
+  Future<void> advanceRecurring(String id, String nextOn) async => calls.add('advanceRecurring $id $nextOn');
+
+  @override
+  Future<Challenge> addChallenge(Challenge c) async {
+    calls.add('addChallenge ${challengeKindNames[c.kind]}');
+    return Challenge.fromRow({...c.toRow(), 'id': _next('ch'), 'created_at': ''});
+  }
+
+  @override
+  Future<void> deleteChallenge(String id) async => calls.add('deleteChallenge $id');
 }

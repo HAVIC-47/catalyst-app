@@ -11,7 +11,8 @@ import io.flutter.plugin.common.MethodChannel
 //   press and hold → Share → Catalyst). Only that text arrives — the app has no
 //   SMS permission and reads nothing else; it's parsed on the phone.
 // - catalyst/widget: the home-screen widgets' figures (Widgets.kt), and a widget
-//   tap handed to the app: "add", "open:<section>" or "mood:<1-5>".
+//   tap handed to the app: "add", "open:<section>" or "mood:<1-5>". Also the
+//   phone's timezone ("Asia/Dhaka"), which recurring entries keep their time in.
 class MainActivity : FlutterActivity() {
     private var smsChannel: MethodChannel? = null
     private var widgetChannel: MethodChannel? = null
@@ -55,6 +56,7 @@ class MainActivity : FlutterActivity() {
                         result.success(launchAction)
                         launchAction = null
                     }
+                    "timezone" -> result.success(java.util.TimeZone.getDefault().id)
                     else -> result.notImplemented()
                 }
             }

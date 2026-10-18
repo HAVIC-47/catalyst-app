@@ -3,6 +3,7 @@
 import 'package:flutter/painting.dart';
 
 import 'util/i18n.dart';
+import 'util/recurring.dart';
 
 enum Kind { expense, income, saving }
 
@@ -57,6 +58,7 @@ class Txn {
     required this.occurredAt,
     required this.createdAt,
     this.walletId,
+    this.recurringId,
   });
 
   final String id;
@@ -70,6 +72,7 @@ class Txn {
   final String occurredAt; // ISO timestamp (intraday)
   final String createdAt;
   final String? walletId; // null = the default wallet
+  final String? recurringId; // logged automatically by this recurring rule
 
   factory Txn.fromRow(Map<String, dynamic> r) => Txn(
         id: r['id'] as String,
@@ -83,12 +86,18 @@ class Txn {
         occurredAt: (r['occurred_at'] ?? r['created_at']) as String,
         createdAt: (r['created_at'] as String?) ?? '',
         walletId: r['wallet_id'] as String?,
+        recurringId: r['recurring_id'] as String?,
       );
 
   /// The same entry in another wallet (null = the default one).
   Txn withWallet(String? wallet) => Txn(
       id: id, kind: kind, amount: amount, categoryId: categoryId, categoryName: categoryName, place: place,
-      note: note, occurredOn: occurredOn, occurredAt: occurredAt, createdAt: createdAt, walletId: wallet);
+      note: note, occurredOn: occurredOn, occurredAt: occurredAt, createdAt: createdAt, walletId: wallet, recurringId: recurringId);
+
+  /// The same entry, no longer linked to the recurring rule that logged it.
+  Txn unlinked() => Txn(
+      id: id, kind: kind, amount: amount, categoryId: categoryId, categoryName: categoryName, place: place,
+      note: note, occurredOn: occurredOn, occurredAt: occurredAt, createdAt: createdAt, walletId: walletId);
 }
 
 /// The ledger's order (same as the database list): newest day first, then newest
@@ -268,6 +277,167 @@ class Bill {
         walletId: clearWallet ? null : walletId ?? this.walletId,
         lastPaidTxn: clearLastPaid ? null : lastPaidTxn ?? this.lastPaidTxn,
       );
+}
+
+/// An income or expense that logs itself — a salary on the 1st, rent, a
+/// subscription. Each due date becomes a transaction (util/recurring.dart has the
+/// dates; the web and its hourly job use the same rules).
+class RecurringRule {
+  const RecurringRule({
+    required this.id,
+    required this.name,
+    required this.kind,
+    required this.amount,
+    this.categoryId,
+    this.walletId,
+    required this.schedule,
+    required this.nextOn,
+    this.paused = false,
+    this.tz = 'Asia/Dhaka',
+    this.createdAt = '',
+  });
+
+  final String id;
+  final String name;
+  final Kind kind; // income or expense
+  final double amount;
+  final String? categoryId; // null = matched by name, else Other
+  final String? walletId; // null = the default wallet
+  final Schedule schedule;
+  final String nextOn; // the next date not logged yet
+  final bool paused;
+  final String tz; // the timezone its time is in (where it was saved)
+  final String createdAt;
+
+  bool get ended => hasEnded(schedule, nextOn);
+
+  factory RecurringRule.fromRow(Map<String, dynamic> r) => RecurringRule(
+        id: r['id'] as String,
+        name: r['name'] as String,
+        kind: kindFrom(r['kind'] as String?),
+        amount: _num(r['amount']),
+        categoryId: r['category_id'] as String?,
+        walletId: r['wallet_id'] as String?,
+        schedule: Schedule(
+          frequency: frequencyFrom(r['frequency'] as String?),
+          every: (r['every'] as num?)?.toInt() ?? 1,
+          day1: (r['day1'] as num?)?.toInt() ?? 1,
+          day2: (r['day2'] as num?)?.toInt(),
+          time: (r['at_time'] as String?) ?? '09:00',
+          startOn: r['start_on'] as String,
+          endOn: r['end_on'] as String?,
+        ),
+        nextOn: r['next_on'] as String,
+        paused: (r['paused'] as bool?) ?? false,
+        tz: (r['tz'] as String?) ?? 'Asia/Dhaka',
+        createdAt: (r['created_at'] as String?) ?? '',
+      );
+
+  /// The columns the user sets (not nextOn, paused or tz).
+  static Map<String, dynamic> fields({
+    required String name,
+    required Kind kind,
+    required double amount,
+    required String? categoryId,
+    required String? walletId,
+    required Schedule schedule,
+  }) =>
+      {
+        'name': name,
+        'kind': kind.name,
+        'amount': amount,
+        'category_id': categoryId,
+        'wallet_id': walletId,
+        'frequency': frequencyName(schedule.frequency),
+        'every': schedule.every,
+        'day1': schedule.day1,
+        'day2': schedule.frequency == Frequency.twiceMonthly ? schedule.day2 : null,
+        'at_time': schedule.time,
+        'start_on': schedule.startOn,
+        'end_on': schedule.endOn,
+      };
+
+  RecurringRule copyWith({
+    String? name,
+    Kind? kind,
+    double? amount,
+    String? categoryId,
+    String? walletId,
+    Schedule? schedule,
+    String? nextOn,
+    bool? paused,
+    String? tz,
+    bool clearCategory = false,
+    bool clearWallet = false,
+  }) =>
+      RecurringRule(
+        id: id,
+        name: name ?? this.name,
+        kind: kind ?? this.kind,
+        amount: amount ?? this.amount,
+        categoryId: clearCategory ? null : categoryId ?? this.categoryId,
+        walletId: clearWallet ? null : walletId ?? this.walletId,
+        schedule: schedule ?? this.schedule,
+        nextOn: nextOn ?? this.nextOn,
+        paused: paused ?? this.paused,
+        tz: tz ?? this.tz,
+        createdAt: createdAt,
+      );
+}
+
+enum ChallengeKind { noSpend, spendUnder, skipCategory, save, logDaily }
+
+const challengeKindNames = {
+  ChallengeKind.noSpend: 'no_spend',
+  ChallengeKind.spendUnder: 'spend_under',
+  ChallengeKind.skipCategory: 'skip_category',
+  ChallengeKind.save: 'save',
+  ChallengeKind.logDaily: 'log_daily',
+};
+
+/// A few days' challenge — no-spend days, spending under an amount, skipping a
+/// category, saving an amount, logging every day. Progress comes from the entries
+/// (util/habits.dart).
+class Challenge {
+  const Challenge({
+    required this.id,
+    required this.kind,
+    required this.target,
+    this.categoryId,
+    this.categoryName = '',
+    required this.startOn,
+    required this.days,
+    this.createdAt = '',
+  });
+
+  final String id;
+  final ChallengeKind kind;
+  final double target; // no-spend days, or an amount to stay under / save
+  final String? categoryId; // skip a category
+  final String categoryName;
+  final String startOn;
+  final int days;
+  final String createdAt;
+
+  factory Challenge.fromRow(Map<String, dynamic> r) => Challenge(
+        id: r['id'] as String,
+        kind: challengeKindNames.entries.where((e) => e.value == r['kind']).firstOrNull?.key ?? ChallengeKind.noSpend,
+        target: _num(r['target']),
+        categoryId: r['category_id'] as String?,
+        categoryName: (r['category_name'] as String?) ?? '',
+        startOn: r['start_on'] as String,
+        days: (r['days'] as num?)?.toInt() ?? 7,
+        createdAt: (r['created_at'] as String?) ?? '',
+      );
+
+  Map<String, dynamic> toRow() => {
+        'kind': challengeKindNames[kind],
+        'target': target,
+        'category_id': categoryId,
+        'category_name': categoryName,
+        'start_on': startOn,
+        'days': days,
+      };
 }
 
 class JournalEntry {
@@ -706,6 +876,8 @@ const dashboardSections = [
   ('trend', 'Mood × money trend', 'Net flow vs mood over time'),
   ('recap', 'Monthly recap', 'AI look back at the month, with what to change'),
   ('wallets', 'Wallets', "What's in cash, bKash, Nagad, the bank"),
+  ('netWorth', 'Net worth', 'Wallets and dhar, month by month'),
+  ('habits', 'Streaks & challenges', 'Your streak and the challenges going'),
   ('insights', 'AI insights', 'Mood · money · savings, with suggestions'),
   ('spent', 'Spent by category', 'Where the money went'),
   ('earned', 'Earned by category', 'Where the money came from'),

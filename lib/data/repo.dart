@@ -379,6 +379,45 @@ class Repo {
 
   static Future<void> deleteDebtPayment(String id) => _db.from('debt_payments').delete().eq('id', id);
 
+  // ---- recurring income and expenses, challenges (need the 1.5 database update)
+  static Future<List<RecurringRule>> listRecurring() async =>
+      (await _db.from('recurring').select().order('created_at', ascending: true)).map(_keep('recurring', RecurringRule.fromRow)).toList();
+
+  static Future<RecurringRule> addRecurring(Map<String, dynamic> row) async =>
+      RecurringRule.fromRow(await _db.from('recurring').insert(row).select().single());
+
+  static Future<void> updateRecurring(String id, Map<String, dynamic> patch) => _db.from('recurring').update(patch).eq('id', id);
+
+  /// Its entries stay; the database forgets which rule logged them.
+  static Future<void> deleteRecurring(String id) => _db.from('recurring').delete().eq('id', id);
+
+  /// Logs one of a rule's dates. Null when that date is already in the ledger —
+  /// the database keeps one entry per rule and date, whoever logs it first.
+  static Future<Txn?> logRecurring(String ruleId, String date, NewTxn t) async {
+    try {
+      return Txn.fromRow(await _db.from('transactions').insert({...t.toRow(), 'recurring_id': ruleId, 'recurring_on': date}).select().single());
+    } on PostgrestException catch (e) {
+      if (e.code == '23505') return null;
+      rethrow;
+    }
+  }
+
+  /// Moves a rule on to [nextOn] — never back, if another device got further first.
+  static Future<void> advanceRecurring(String id, String nextOn) =>
+      _db.from('recurring').update({'next_on': nextOn}).eq('id', id).lt('next_on', nextOn);
+
+  static Future<List<Challenge>> listChallenges() async => (await _db
+          .from('challenges')
+          .select()
+          .order('start_on', ascending: false)
+          .order('created_at', ascending: false))
+      .map(_keep('challenges', Challenge.fromRow))
+      .toList();
+
+  static Future<Challenge> addChallenge(Challenge c) async => Challenge.fromRow(await _db.from('challenges').insert(c.toRow()).select().single());
+
+  static Future<void> deleteChallenge(String id) => _db.from('challenges').delete().eq('id', id);
+
   // ---- UI preferences (auth user metadata — shared with the web app)
   static Future<Map<String, dynamic>> loadPrefs() async {
     final res = await _db.auth.getUser();

@@ -32,6 +32,23 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.5.0', [
+        Feature(
+          LucideIcons.repeat,
+          tr('Recurring income and expenses'),
+          tr('Salary on the 1st, rent, subscriptions: pick the day (weekly, twice a month, monthly…) and the time, and '
+              "each one is added by itself — you're told when it is."),
+        ),
+        Feature(LucideIcons.smile, tr('Mood-spend alerts'), tr('A heads-up when a low day comes with a lot more spending than usual.')),
+        Feature(
+          LucideIcons.flame,
+          tr('Streaks and challenges'),
+          tr('A streak for every day you log something, and challenges like no-spend days or spending under an amount.'),
+        ),
+        Feature(LucideIcons.handHeart, tr('Zakat calculator'), tr('Your wallets and dhar come in by themselves; add gold and silver to see the nisab and the 2.5% due.')),
+        Feature(LucideIcons.chartLine, tr('Net worth over time'), tr("Wallets plus what you're owed, minus what you owe — month by month on the dashboard.")),
+        Feature(LucideIcons.bellRing, tr('Choose your notifications'), tr("Settings → Notifications: turn off any kind you don't want.")),
+      ]),
       Release('1.4.3', [
         Feature(LucideIcons.download, tr('Updates pop up'), tr('When a new version is out, the app tells you right away — Update starts the download.')),
         Feature(LucideIcons.keyRound, tr('Change your password'), tr('Settings → Account: your current password, then the new one.')),
@@ -127,7 +144,18 @@ List<FeatureGroup> appFeatures() {
       Feature(LucideIcons.piggyBank, tr('Budgets'), tr('Monthly limits per category that fill up as you spend, with alerts at 80% and 100%.')),
       Feature(LucideIcons.target, tr('Goals'), tr('Savings targets with progress bars and quick additions.')),
       Feature(LucideIcons.handCoins, tr('Dhar / baki'), tr('Money you lent or borrowed, per person: part payments, settle in full or write off.')),
+      Feature(
+        LucideIcons.repeat,
+        tr('Recurring income and expenses'),
+        tr('Salary on the 1st, rent, subscriptions: set the day (once or twice a month, weekly…) and the time, and each one is added by itself — with a notification.'),
+      ),
       Feature(LucideIcons.vault, tr('Vault Mode'), tr('Count every income and expense against your savings pool.')),
+      Feature(LucideIcons.chartLine, tr('Net worth'), tr("Wallets plus what you're owed, minus what you owe — month by month on the dashboard.")),
+      Feature(
+        LucideIcons.handHeart,
+        tr('Zakat calculator'),
+        tr('Wallets and dhar come in by themselves; add gold, silver and the rest to see the nisab and the 2.5% due.'),
+      ),
     ]),
     FeatureGroup(tr('Mood'), tr('& days'), [
       Feature(LucideIcons.smile, tr('Mood check-in'), tr('Five moods, with what the day was about — work, family, travel…')),
@@ -137,6 +165,12 @@ List<FeatureGroup> appFeatures() {
         tr('Week, month and year views. Every day is tinted by its mood and its money; tap one to log.'),
       ),
       Feature(LucideIcons.notebookPen, tr('Journal'), tr('A daily log with a mood, plus habits to tick off each day.')),
+      Feature(
+        LucideIcons.flame,
+        tr('Streaks and challenges'),
+        tr('A streak for every day you log something, and challenges like no-spend days or spending under an amount — with notifications.'),
+      ),
+      Feature(LucideIcons.smile, tr('Mood-spend alerts'), tr('A heads-up when a low day comes with a lot more spending than usual.')),
       Feature(
         LucideIcons.layoutGrid,
         tr('Dashboard'),
@@ -167,7 +201,8 @@ List<FeatureGroup> appFeatures() {
       Feature(
         LucideIcons.bellRing,
         tr('Reminders'),
-        tr('An evening "how was today?", bills and dhar due tomorrow, and budget alerts — scheduled on the phone, so they work offline.'),
+        tr('An evening "how was today?", bills and dhar due tomorrow, recurring entries, streaks and challenges — scheduled on '
+            'the phone, so they work offline. Turn off any kind in Settings → Notifications.'),
       ),
       Feature(
         LucideIcons.wifiOff,

@@ -3,14 +3,18 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' hide Category;
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../models.dart';
 import '../util/currency.dart';
 import '../util/format.dart';
+import '../util/habits.dart';
 import '../util/i18n.dart';
 import '../util/money.dart';
+import '../util/recurring.dart';
+import '../util/zakat.dart';
 import 'money_db.dart';
 import 'offline.dart';
 import 'repo.dart';
@@ -29,40 +33,108 @@ List<Category> orderCategories(Iterable<Category> list) => [...list]
     return sort != 0 ? sort : a.name.toLowerCase().compareTo(b.name.toLowerCase());
   });
 
-/// Reminder settings — in the account's preferences, so the web, this app and
-/// the web's reminders job all follow the same ones (the web's lib/reminders.ts).
+/// Notification settings — in the account's preferences, so the web, this app
+/// and the web's reminders job all follow the same ones (the web's
+/// lib/reminders.ts). Settings → Notifications turns each kind on or off.
 class ReminderPrefs {
-  const ReminderPrefs({this.checkin = true, this.checkinTime = '21:00', this.bills = true, this.budgets = true, this.dhar = true});
+  const ReminderPrefs({
+    this.checkin = true,
+    this.checkinTime = '21:00',
+    this.bills = true,
+    this.budgets = true,
+    this.dhar = true,
+    this.recurring = true,
+    this.moodSpend = true,
+    this.streaks = true,
+    this.challenges = true,
+    this.updates = true,
+  });
 
   final bool checkin; // evening "how was today?"
   final String checkinTime; // HH:mm, local
   final bool bills; // the day before a bill is due
   final bool budgets; // at 80% and 100% of a monthly budget
   final bool dhar; // the day before money lent or borrowed is due back
+  final bool recurring; // a recurring income or expense was added
+  final bool moodSpend; // a lot spent on a low-mood day
+  final bool streaks; // streak milestones, and a streak about to end
+  final bool challenges; // a challenge won, missed, or on its last day
+  final bool updates; // a new version of the app
+
+  /// How many kinds are on, of all of them (the check-in time isn't a kind).
+  int get onCount => [checkin, bills, budgets, dhar, recurring, moodSpend, streaks, challenges, updates].where((on) => on).length;
+  static const kinds = 9;
 
   factory ReminderPrefs.fromJson(Object? raw) {
     final r = raw is Map ? raw : const {};
-    bool flag(String k, bool d) => r[k] is bool ? r[k] as bool : d;
+    bool flag(String k) => r[k] is bool ? r[k] as bool : true;
     final t = r['checkinTime'];
     return ReminderPrefs(
-      checkin: flag('checkin', true),
+      checkin: flag('checkin'),
       checkinTime: t is String && RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(t) ? t : '21:00',
-      bills: flag('bills', true),
-      budgets: flag('budgets', true),
-      dhar: flag('dhar', true),
+      bills: flag('bills'),
+      budgets: flag('budgets'),
+      dhar: flag('dhar'),
+      recurring: flag('recurring'),
+      moodSpend: flag('moodSpend'),
+      streaks: flag('streaks'),
+      challenges: flag('challenges'),
+      updates: flag('updates'),
     );
   }
 
-  Map<String, dynamic> toJson() => {'checkin': checkin, 'checkinTime': checkinTime, 'bills': bills, 'budgets': budgets, 'dhar': dhar};
+  Map<String, dynamic> toJson() => {
+        'checkin': checkin,
+        'checkinTime': checkinTime,
+        'bills': bills,
+        'budgets': budgets,
+        'dhar': dhar,
+        'recurring': recurring,
+        'moodSpend': moodSpend,
+        'streaks': streaks,
+        'challenges': challenges,
+        'updates': updates,
+      };
 
-  ReminderPrefs copyWith({bool? checkin, String? checkinTime, bool? bills, bool? budgets, bool? dhar}) => ReminderPrefs(
+  ReminderPrefs copyWith({
+    bool? checkin,
+    String? checkinTime,
+    bool? bills,
+    bool? budgets,
+    bool? dhar,
+    bool? recurring,
+    bool? moodSpend,
+    bool? streaks,
+    bool? challenges,
+    bool? updates,
+  }) =>
+      ReminderPrefs(
         checkin: checkin ?? this.checkin,
         checkinTime: checkinTime ?? this.checkinTime,
         bills: bills ?? this.bills,
         budgets: budgets ?? this.budgets,
         dhar: dhar ?? this.dhar,
+        recurring: recurring ?? this.recurring,
+        moodSpend: moodSpend ?? this.moodSpend,
+        streaks: streaks ?? this.streaks,
+        challenges: challenges ?? this.challenges,
+        updates: updates ?? this.updates,
       );
 }
+
+/// Something worth a notification: a mood-spend alert, a streak milestone, a
+/// challenge won, missed or on its last day. The shell shows it on the phone (or
+/// as a snack bar when notifications aren't allowed).
+class AppAlert {
+  const AppAlert(this.title, this.body, {this.target = 'dashboard'});
+
+  final String title;
+  final String body;
+  final String target; // what tapping it opens
+}
+
+/// A new recurring entry's fields (where it's got to, its timezone and pause come later).
+typedef RecurringInput = ({String name, Kind kind, double amount, String? categoryId, String? walletId, Schedule schedule});
 
 /// What paying a bill changed, so Undo can put it back.
 typedef BillPayment = ({String billId, String txnId, String dueOn, bool isPaid, String? lastPaidTxn});
@@ -94,11 +166,25 @@ class AppState extends ChangeNotifier {
   /// False until the database has the wallets update (db/supabase.sql).
   bool walletsReady = false;
 
+  /// Incomes and expenses that log themselves, and challenges.
+  List<RecurringRule> recurring = [];
+  List<Challenge> challenges = [];
+
+  /// False until the database has the 1.5 update (recurring, challenges).
+  bool recurringReady = false;
+
+  /// The phone's timezone (recurring entries keep their time in it). Tests swap it.
+  static Future<String> Function() deviceTimezone = _platformTimezone;
+
   /// The account's currency (BDT unless changed in Settings — shared with the web).
   String currency = 'BDT';
 
   /// Reminder settings (shared with the web).
   ReminderPrefs reminders = const ReminderPrefs();
+
+  /// The zakat calculator's figures (shared with the web).
+  ZakatInputs zakat = const ZakatInputs();
+  Timer? _zakatSave;
 
   /// The interface language, 'en' or 'bn' (shared with the web).
   String lang = appLang;
@@ -106,11 +192,15 @@ class AppState extends ChangeNotifier {
   /// Short notices for the screen (budget alerts, offline saves); the shell shows them.
   final notices = StreamController<String>.broadcast();
 
+  /// Moments worth a phone notification (mood-spend, streaks, challenges); the shell posts them.
+  final alerts = StreamController<AppAlert>.broadcast();
+
   /// True while the app shows the copy saved on this phone (no connection at the
   /// last load), from [offlineSince].
   bool offline = false;
   DateTime? offlineSince;
   Timer? _retry;
+  Timer? _recurringTick; // while the app is open, a recurring entry due now is logged within a minute
   final Set<String> _offlineFails = {};
 
   /// Entries and moods made offline, still waiting to be sent.
@@ -166,6 +256,7 @@ class AppState extends ChangeNotifier {
     vaultMode = prefs.getBool('vaultMode') ?? false;
     currency = setCurrency(prefs.getString('currency') ?? currency).code;
     reminders = ReminderPrefs.fromJson(_decode(prefs.getString('reminders')));
+    zakat = ZakatInputs.fromJson(_decode(prefs.getString('zakat')));
     for (final k in BoardKind.values) {
       final id = prefs.getString('board:${k.name}');
       if (id != null) selectedBoards.putIfAbsent(k, () => id);
@@ -196,6 +287,7 @@ class AppState extends ChangeNotifier {
       _safe(Repo.listTransfers, <Transfer>[], 'transfers'),
       _safe(Repo.listDebts, <Debt>[], 'debts'),
       _safe(Repo.listDebtPayments, <DebtPayment>[], 'debtPayments'),
+      _loadNewer(),
     ]);
 
     // No connection: open on the copy saved on this phone, plus what's waiting to be sent.
@@ -254,12 +346,32 @@ class AppState extends ChangeNotifier {
     transfers = results[13] as List<Transfer>;
     debts = results[14] as List<Debt>;
     debtPayments = results[15] as List<DebtPayment>;
+    final newer = results[16] as (bool, List<RecurringRule>, List<Challenge>);
+    recurringReady = newer.$1;
+    recurring = newer.$2;
+    challenges = newer.$3;
     _applyOutbox();
     loading = false;
     notifyListeners();
     if (uid != null) unawaited(OfflineCopy.save(uid, Map.of(Repo.lastRows), walletsReady: walletsReady));
     if (unsent > 0) unawaited(syncOutbox());
     if (unsent == 0) _stopRetry();
+    if (recurringReady) {
+      unawaited(runRecurring());
+      _recurringTick ??= Timer.periodic(const Duration(minutes: 1), (_) => runRecurring());
+    }
+  }
+
+  /// Recurring entries and challenges need the 1.5 database update; until then they're off.
+  Future<(bool, List<RecurringRule>, List<Challenge>)> _loadNewer() async {
+    try {
+      final r = await Future.wait<Object>([Repo.listRecurring(), Repo.listChallenges()]);
+      return (true, r[0] as List<RecurringRule>, r[1] as List<Challenge>);
+    } catch (e) {
+      debugPrint('[catalyst] recurring entries and challenges unavailable — run db/supabase.sql? $e');
+      if (isOffline(e)) _offlineFails.add('recurring');
+      return (false, <RecurringRule>[], <Challenge>[]);
+    }
   }
 
   /// The lists from the saved copy's rows (the same fromRow the server's go through).
@@ -291,6 +403,9 @@ class AppState extends ChangeNotifier {
     debts = rows('debts', Debt.fromRow);
     debtPayments = rows('debt_payments', DebtPayment.fromRow);
     walletsReady = ready && wallets.isNotEmpty;
+    recurring = rows('recurring', RecurringRule.fromRow);
+    challenges = rows('challenges', Challenge.fromRow);
+    recurringReady = t.containsKey('recurring'); // shown; nothing is logged while offline
   }
 
   static String _nowIso() => DateTime.now().toUtc().toIso8601String();
@@ -402,9 +517,14 @@ class AppState extends ChangeNotifier {
     debts = [];
     debtPayments = [];
     walletsReady = false;
+    recurring = [];
+    challenges = [];
+    recurringReady = false;
     offline = false;
     offlineSince = null;
     _stopRetry();
+    _recurringTick?.cancel();
+    _recurringTick = null;
     selectedBoards.clear();
     dashboardHidden = null;
     _dashboardTouched = false;
@@ -428,6 +548,10 @@ class AppState extends ChangeNotifier {
       if (!_prefsTouched.contains('reminders') && meta['reminders'] != null) {
         reminders = ReminderPrefs.fromJson(meta['reminders']);
         prefs.setString('reminders', jsonEncode(reminders.toJson()));
+      }
+      if (!_prefsTouched.contains('zakat') && meta['zakat'] != null) {
+        zakat = ZakatInputs.fromJson(meta['zakat']);
+        prefs.setString('zakat', jsonEncode(zakat.toJson()));
       }
       if (!_prefsTouched.contains('lang') && (meta['lang'] == 'en' || meta['lang'] == 'bn')) {
         await setAppLang(meta['lang']);
@@ -481,6 +605,19 @@ class AppState extends ChangeNotifier {
     Repo.savePrefs({'reminders': r.toJson()}).catchError((Object e) => debugPrint('[catalyst] could not save reminders: $e'));
   }
 
+  /// The zakat figures: kept on the phone at once, saved to the account a moment
+  /// after the last change (each keystroke shouldn't be a request).
+  void setZakat(ZakatInputs z) {
+    _prefsTouched.add('zakat');
+    zakat = z;
+    notifyListeners();
+    SharedPreferences.getInstance().then((p) => p.setString('zakat', jsonEncode(z.toJson())));
+    _zakatSave?.cancel();
+    _zakatSave = Timer(const Duration(milliseconds: 800), () {
+      Repo.savePrefs({'zakat': z.toJson()}).catchError((Object e) => debugPrint('[catalyst] could not save the zakat figures: $e'));
+    });
+  }
+
   static Object? _decode(String? s) {
     if (s == null) return null;
     try {
@@ -511,7 +648,10 @@ class AppState extends ChangeNotifier {
     final before = transactions;
     transactions = [c, ...transactions]..sort(newestFirst);
     notifyListeners();
-    if (c.kind == Kind.expense) checkBudgets(before);
+    if (c.kind == Kind.expense) {
+      checkBudgets(before);
+      unawaited(checkMoodSpend());
+    }
     return c;
   }
 
@@ -592,6 +732,7 @@ class AppState extends ChangeNotifier {
     }
     moods = [s, ...moods]..sort((a, b) => b.loggedAt.compareTo(a.loggedAt));
     notifyListeners();
+    if (mood <= 2) unawaited(checkMoodSpend());
   }
 
   List<MoodLog> moodsForDate(String key) =>
@@ -749,6 +890,261 @@ class AppState extends ChangeNotifier {
     });
     bills = [for (final x in bills) x.id == b.id ? b : x]..sort((a, c) => a.dueOn.compareTo(c.dueOn));
     notifyListeners();
+  }
+
+  // ---- recurring income and expenses: each due date is logged by itself
+  bool _running = false;
+
+  /// Log every date that's come due (whoever logs a date first, it's in the
+  /// ledger once), move each rule on, and say what was added. The phone was told
+  /// at each one's time already (Notifications schedules them); this catches up.
+  Future<void> runRecurring() async {
+    if (_running || !recurringReady || offline) return;
+    _running = true;
+    try {
+      final now = DateTime.now();
+      final today = toDateKey(now);
+      final time = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      final added = <Txn>[];
+      var elsewhere = false;
+      for (final rule in [...recurring]) {
+        String? last;
+        for (final date in dueDates(rule.schedule, nextOn: rule.nextOn, paused: rule.paused, today: today, now: time)) {
+          final cat = ruleCategory(rule, categories);
+          try {
+            final t = await db.logRecurring(
+              rule.id,
+              date,
+              NewTxn(
+                kind: rule.kind,
+                amount: rule.amount,
+                categoryId: cat?.id,
+                categoryName: cat?.name ?? 'Other',
+                note: rule.name,
+                occurredOn: date,
+                occurredAt: combineDateTime(date, rule.schedule.time),
+                walletId: walletsReady ? rule.walletId ?? defaultWallet(wallets)?.id : null,
+              ),
+            );
+            if (t != null) {
+              added.add(t);
+            } else {
+              elsewhere = true; // the web or the reminders job got there first
+            }
+            last = date;
+          } catch (e) {
+            debugPrint('[catalyst] could not log a recurring entry: $e');
+            break;
+          }
+        }
+        if (last == null) continue;
+        final next = nextAfterLogged(rule.schedule, last);
+        try {
+          await db.advanceRecurring(rule.id, next);
+        } catch (e) {
+          debugPrint('[catalyst] could not move a recurring entry on: $e');
+        }
+        recurring = [for (final r in recurring) r.id == rule.id && next.compareTo(r.nextOn) > 0 ? r.copyWith(nextOn: next) : r];
+      }
+      if (added.isNotEmpty) {
+        final before = transactions;
+        transactions = [...added, ...transactions]..sort(newestFirst);
+        if (added.any((t) => t.kind == Kind.expense)) checkBudgets(before);
+        if (reminders.recurring) {
+          String signed(Txn t) => formatCurrency(t.kind == Kind.income ? t.amount : -t.amount, sign: true);
+          notices.add(added.length == 1
+              ? tr('Added automatically: {name} {amount}', {'name': added.first.note, 'amount': signed(added.first)})
+              : tr('{n} recurring entries added: {names}', {'n': added.length, 'names': {for (final t in added) t.note}.join(', ')}));
+        }
+      }
+      notifyListeners();
+      // Pick up what another device logged meanwhile.
+      if (elsewhere) {
+        try {
+          transactions = await Repo.listTransactions();
+          _applyOutbox();
+          notifyListeners();
+        } catch (_) {}
+      }
+    } finally {
+      _running = false;
+    }
+  }
+
+  static Future<String> _platformTimezone() async {
+    try {
+      final tz = await const MethodChannel('catalyst/widget').invokeMethod<String>('timezone');
+      if (tz != null && tz.isNotEmpty) return tz;
+    } catch (_) {}
+    return 'Asia/Dhaka';
+  }
+
+  /// From its start date — a start in the past logs the dates since then too.
+  Future<RecurringRule> createRecurring(RecurringInput r) async {
+    final row = RecurringRule.fields(
+      name: r.name,
+      kind: r.kind,
+      amount: r.amount,
+      categoryId: r.categoryId,
+      walletId: walletsReady ? r.walletId : null,
+      schedule: r.schedule,
+    );
+    final x = await db.addRecurring({
+      ...row,
+      'next_on': firstNextOn(r.schedule, r.schedule.startOn),
+      'tz': await deviceTimezone(),
+      'paused': false,
+    });
+    recurring = [...recurring, x];
+    notifyListeners();
+    unawaited(runRecurring());
+    return x;
+  }
+
+  /// Saves changes; a new schedule carries on from today.
+  Future<void> editRecurring(String id, RecurringInput r) async {
+    final was = recurring.where((x) => x.id == id).firstOrNull;
+    if (was == null) return;
+    final patch = RecurringRule.fields(
+      name: r.name,
+      kind: r.kind,
+      amount: r.amount,
+      categoryId: r.categoryId,
+      walletId: walletsReady ? r.walletId : was.walletId,
+      schedule: r.schedule,
+    );
+    var next = was.nextOn;
+    var tz = was.tz;
+    if (!r.schedule.sameAs(was.schedule)) {
+      final today = toDateKey(DateTime.now());
+      next = firstNextOn(r.schedule, today.compareTo(r.schedule.startOn) > 0 ? today : r.schedule.startOn);
+      tz = await deviceTimezone();
+      patch['next_on'] = next;
+      patch['tz'] = tz;
+    }
+    await db.updateRecurring(id, patch);
+    recurring = [
+      for (final x in recurring)
+        x.id == id
+            ? RecurringRule(
+                id: id,
+                name: r.name,
+                kind: r.kind,
+                amount: r.amount,
+                categoryId: r.categoryId,
+                walletId: patch['wallet_id'] as String?,
+                schedule: r.schedule,
+                nextOn: next,
+                paused: x.paused,
+                tz: tz,
+                createdAt: x.createdAt,
+              )
+            : x,
+    ];
+    notifyListeners();
+    unawaited(runRecurring());
+  }
+
+  /// Paused rules log nothing; resuming carries on from today (missed dates stay missed).
+  Future<void> pauseRecurring(String id, bool paused) async {
+    final was = recurring.where((x) => x.id == id).firstOrNull;
+    if (was == null) return;
+    final patch = <String, dynamic>{'paused': paused};
+    if (!paused) {
+      final today = toDateKey(DateTime.now());
+      patch['next_on'] = firstNextOn(was.schedule, today.compareTo(was.schedule.startOn) > 0 ? today : was.schedule.startOn);
+    }
+    await db.updateRecurring(id, patch);
+    recurring = [for (final x in recurring) x.id == id ? x.copyWith(paused: paused, nextOn: patch['next_on'] as String?) : x];
+    notifyListeners();
+    if (!paused) unawaited(runRecurring());
+  }
+
+  /// The rule goes; entries it logged stay in the ledger.
+  Future<void> removeRecurring(String id) async {
+    await db.deleteRecurring(id);
+    recurring = recurring.where((x) => x.id != id).toList();
+    transactions = [for (final t in transactions) t.recurringId == id ? t.unlinked() : t];
+    notifyListeners();
+  }
+
+  // ---- challenges
+  Future<Challenge> createChallenge(Challenge c) async {
+    final x = await db.addChallenge(c);
+    challenges = [x, ...challenges];
+    notifyListeners();
+    return x;
+  }
+
+  Future<void> removeChallenge(String id) async {
+    await db.deleteChallenge(id);
+    challenges = challenges.where((c) => c.id != id).toList();
+    notifyListeners();
+  }
+
+  // ---- alerts (each once, on this phone)
+  /// A lot spent on a low day — once a day.
+  Future<void> checkMoodSpend() async {
+    if (!reminders.moodSpend) return;
+    final today = toDateKey(DateTime.now());
+    final alert = moodSpendAlert(transactions, moods, today);
+    if (alert == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'mood-spend:$today';
+    if (prefs.getBool(key) ?? false) return;
+    await prefs.setBool(key, true);
+    alerts.add(AppAlert(
+      tr('Mood & money'),
+      tr("You've spent {amount} today on a low day — about {ratio}× your usual.", {'amount': formatCurrency(alert.spent), 'ratio': alert.ratio}),
+      target: 'challenges',
+    ));
+  }
+
+  /// Streak milestones, and challenges won, missed or on their last day.
+  Future<void> checkHabits() async {
+    if (loading || (!reminders.streaks && !reminders.challenges)) return;
+    final prefs = await SharedPreferences.getInstance();
+    final today = toDateKey(DateTime.now());
+    if (reminders.streaks) {
+      final s = streakOf(loggedDays(transactions, moods), today);
+      final m = streakMilestone(s.current);
+      final seen = prefs.getString('streak-celebrated') ?? '';
+      final before = seen.startsWith('${s.since}|') ? int.tryParse(seen.split('|').last) ?? 0 : 0;
+      if (m > before) {
+        await prefs.setString('streak-celebrated', '${s.since}|$m');
+        // Only while it's fresh (reached today or yesterday) — not for an old streak on first look.
+        if (s.current - m <= 1) {
+          alerts.add(AppAlert(
+            tr('{n}-day streak!', {'n': m}),
+            tr("You've logged something every day for {n} days.", {'n': m}),
+            target: 'challenges',
+          ));
+        }
+      }
+    }
+    if (reminders.challenges && challenges.isNotEmpty) {
+      final told = Map<String, String>.from(_decode(prefs.getString('challenge-notified')) as Map? ?? const {});
+      var changed = false;
+      for (final c in challenges) {
+        final p = challengeProgress(c, transactions, moods, today);
+        final say = switch (p.status) {
+          ChallengeStatus.won => 'won',
+          ChallengeStatus.lost => 'lost',
+          ChallengeStatus.active when p.daysLeft == 1 => 'last',
+          _ => '',
+        };
+        if (say.isEmpty || told[c.id] == say || (say == 'last' && told[c.id] != null)) continue;
+        told[c.id] = say;
+        changed = true;
+        final title = challengeTitle(c, tr, formatCurrency);
+        alerts.add(switch (say) {
+          'won' => AppAlert(tr('Challenge done!'), tr('{title}. Well done!', {'title': title}), target: 'challenges'),
+          'lost' => AppAlert(tr('Challenge missed'), tr('{title}. Try again?', {'title': title}), target: 'challenges'),
+          _ => AppAlert(tr('Last day of your challenge'), title, target: 'challenges'),
+        });
+      }
+      if (changed) await prefs.setString('challenge-notified', jsonEncode(told));
+    }
   }
 
   // ---- wallets + transfers

@@ -97,6 +97,15 @@ Category? billCategory(Bill bill, List<Category> categories) {
       expense.firstOrNull;
 }
 
+/// The category a recurring entry is logged under: its own, one named like it, or Other.
+Category? ruleCategory(RecurringRule rule, List<Category> categories) {
+  final mine = categories.where((c) => c.kind == rule.kind).toList();
+  return mine.where((c) => c.id == rule.categoryId).firstOrNull ??
+      mine.where((c) => _same(c.name, rule.name)).firstOrNull ??
+      mine.where((c) => _same(c.name, 'Other')).firstOrNull ??
+      mine.firstOrNull;
+}
+
 /// How much of a monthly budget this month's expenses have used.
 ({double spent, double ratio}) budgetUse(Budget budget, List<Txn> transactions, [DateTime? now]) {
   final month = toDateKey(now ?? DateTime.now()).substring(0, 7);

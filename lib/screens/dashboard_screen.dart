@@ -1,7 +1,8 @@
 // Dashboard — port of the web's /app/dashboard: this-month KPI tiles, the
-// mood × money trend (owns the single period selector), wallet balances, the AI
-// monthly recap and insights, and six charts. Sections hidden in Settings
-// (shared with the web via user metadata) are not rendered.
+// mood × money trend (owns the single period selector), wallet balances, net
+// worth over time, the streak and challenges, the AI monthly recap and insights,
+// and six charts. Sections hidden in Settings (shared with the web via user
+// metadata) are not rendered.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -17,13 +18,15 @@ import '../util/money.dart';
 import '../util/range.dart';
 import '../widgets/ai_insights.dart';
 import '../widgets/charts.dart';
+import '../widgets/net_worth.dart';
 import '../widgets/ui.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.onCustomize, this.onWallets});
+  const DashboardScreen({super.key, required this.onCustomize, this.onWallets, this.onChallenges});
 
   final VoidCallback onCustomize;
   final VoidCallback? onWallets;
+  final VoidCallback? onChallenges;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -66,6 +69,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         !show('insights') &&
         !show('recap') &&
         !show('wallets') &&
+        !show('netWorth') &&
+        !show('habits') &&
         charts.isEmpty;
     // The recap opens on last month during the first week of a month.
     final recapOffset = now.day <= 7 ? -1 : 0;
@@ -149,6 +154,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             if (show('wallets')) _WalletStrip(onTap: widget.onWallets),
+            if (show('netWorth')) NetWorthCard(onTap: widget.onWallets),
+            if (show('habits')) HabitsStrip(onTap: widget.onChallenges),
             // The month (or year) in one AI read, with what to do differently next time.
             if (show('recap'))
               AiInsightsCard(

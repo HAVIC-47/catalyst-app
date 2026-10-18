@@ -1,8 +1,8 @@
 // Settings — port of the web's /app/settings: a list of what can be set, each
-// opening its own page: language and currency, reminders (both shared with the
-// web through user metadata), dashboard sections, categories, pasting a bKash /
-// Nagad message, About the app (version, updates, every feature, what's new) and
-// the account (delete).
+// opening its own page: language and currency, notifications (each kind on or
+// off — both shared with the web through user metadata), dashboard sections,
+// categories, pasting a bKash / Nagad message, About the app (version, updates,
+// every feature, what's new) and the account (password, delete).
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -33,7 +33,7 @@ const _swatches = [
 
 /// The settings pages, each opened from its row in Settings (the two category
 /// pages from the Categories page).
-enum SettingsPage { language, reminders, dashboard, categories, expenseCategories, incomeCategories, sms, account }
+enum SettingsPage { language, notifications, dashboard, categories, expenseCategories, incomeCategories, sms, account }
 
 /// Open one settings page on top of the app (the dashboard's "Customize" opens
 /// the dashboard sections straight away).
@@ -47,7 +47,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final r = app.reminders;
-    final remindersOn = [r.checkin, r.bills, r.budgets, r.dhar].where((on) => on).length;
+    final remindersOn = r.onCount;
     final hidden = app.dashboardHidden ?? const <String>[];
     final shown = dashboardSections.where((s) => !hidden.contains(s.$1)).length;
     final cur = currencyOf(app.currency);
@@ -66,12 +66,14 @@ class SettingsScreen extends StatelessWidget {
             row(SettingsPage.language, LucideIcons.languages, tr('Language & currency'),
                 '${app.lang == 'bn' ? 'বাংলা' : tr('English')} · ${cur.symbol.trim()} ${tr(cur.name)}'),
             row(
-              SettingsPage.reminders,
+              SettingsPage.notifications,
               LucideIcons.bellRing,
-              tr('Reminders'),
+              tr('Notifications'),
               remindersOn == 0
                   ? tr('All off')
-                  : tr('{n} of 4 on · check-in at {time}', {'n': remindersOn, 'time': _time(context, r.checkinTime)}),
+                  : r.checkin
+                      ? tr('{n} of {total} on · check-in at {time}', {'n': remindersOn, 'total': ReminderPrefs.kinds, 'time': _time(context, r.checkinTime)})
+                      : tr('{n} of {total} on', {'n': remindersOn, 'total': ReminderPrefs.kinds}),
             ),
             row(SettingsPage.dashboard, LucideIcons.layoutGrid, tr('Dashboard'),
                 tr('{n} of {total} sections shown', {'n': shown, 'total': dashboardSections.length})),
@@ -189,7 +191,7 @@ class _SettingsPageView extends StatelessWidget {
     final app = context.watch<AppState>();
     final (title, children) = switch (page) {
       SettingsPage.language => (tr('Language & currency'), const <Widget>[_LanguageSection(), _CurrencySection()]),
-      SettingsPage.reminders => (tr('Reminders'), const <Widget>[_RemindersSection()]),
+      SettingsPage.notifications => (tr('Notifications'), const <Widget>[_RemindersSection(), _AlertsSection()]),
       SettingsPage.dashboard => (tr('Dashboard'), const <Widget>[_DashboardSections()]),
       SettingsPage.categories => (
           tr('Categories'),
@@ -400,7 +402,7 @@ class _RemindersSectionState extends State<_RemindersSection> {
         CardTitle(tr('Reminders'), tr('that help')),
         const SizedBox(height: 4),
         Text(
-          tr('Notifications on this phone, and in the web app. Shared with the web, so you set them once.'),
+          tr("Turn off anything you don't want. Notifications on this phone, and in the web app — shared with the web, so you set them once."),
           style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
         ),
         const SizedBox(height: 12),
@@ -471,6 +473,54 @@ class _RemindersSectionState extends State<_RemindersSection> {
             if (_allowed == false) PrimaryButton(label: tr('Allow'), icon: LucideIcons.bellRing, height: 40, onPressed: _allow),
           ]),
         ],
+      ]),
+    );
+  }
+}
+
+/// The alerts: a recurring entry added, mood & money, streaks, challenges, app updates.
+class _AlertsSection extends StatelessWidget {
+  const _AlertsSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final r = app.reminders;
+    return CardBox(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        CardTitle(tr('Alerts'), tr('when it happens')),
+        const SizedBox(height: 12),
+        _SwitchRow(
+          on: r.recurring,
+          onChanged: (v) => app.setReminders(r.copyWith(recurring: v)),
+          label: tr('Recurring entries'),
+          hint: tr('When a salary, rent or subscription is added by itself'),
+        ),
+        _SwitchRow(
+          on: r.moodSpend,
+          onChanged: (v) => app.setReminders(r.copyWith(moodSpend: v)),
+          label: tr('Mood & money'),
+          hint: tr('When a low day comes with a lot of spending'),
+        ),
+        _SwitchRow(
+          on: r.streaks,
+          onChanged: (v) => app.setReminders(r.copyWith(streaks: v)),
+          label: tr('Streaks'),
+          hint: tr('Milestones, and when a streak is about to end'),
+        ),
+        _SwitchRow(
+          on: r.challenges,
+          onChanged: (v) => app.setReminders(r.copyWith(challenges: v)),
+          label: tr('Challenges'),
+          hint: tr('Won, missed, or on its last day'),
+        ),
+        _SwitchRow(
+          on: r.updates,
+          onChanged: (v) => app.setReminders(r.copyWith(updates: v)),
+          label: tr('App updates'),
+          hint: tr('A pop-up when a new version is out (the banner stays)'),
+        ),
       ]),
     );
   }

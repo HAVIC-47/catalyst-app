@@ -9,17 +9,20 @@ import 'package:catalyst/screens/bills_screen.dart';
 import 'package:catalyst/screens/boards_screen.dart';
 import 'package:catalyst/screens/budgets_screen.dart';
 import 'package:catalyst/screens/calendar_screen.dart';
+import 'package:catalyst/screens/challenges_screen.dart';
 import 'package:catalyst/screens/dashboard_screen.dart';
 import 'package:catalyst/screens/dhar_screen.dart';
 import 'package:catalyst/screens/entry_sheet.dart';
 import 'package:catalyst/screens/goals_screen.dart';
 import 'package:catalyst/screens/journal_screen.dart';
 import 'package:catalyst/screens/ledger_screen.dart';
+import 'package:catalyst/screens/recurring_screen.dart';
 import 'package:catalyst/screens/settings_screen.dart';
 import 'package:catalyst/screens/shell.dart';
 import 'package:catalyst/screens/sms_review_sheet.dart';
 import 'package:catalyst/services/sms.dart';
 import 'package:catalyst/screens/wallets_screen.dart';
+import 'package:catalyst/screens/zakat_screen.dart';
 import 'package:catalyst/services/updates.dart';
 import 'package:catalyst/services/whats_new.dart';
 import 'package:catalyst/theme/app_theme.dart';
@@ -28,7 +31,10 @@ import 'package:catalyst/theme/theme_controller.dart';
 import 'package:catalyst/util/currency.dart';
 import 'package:catalyst/util/format.dart';
 import 'package:catalyst/util/i18n.dart';
+import 'package:catalyst/util/recurring.dart';
+import 'package:catalyst/util/zakat.dart';
 import 'package:catalyst/widgets/ai_insights.dart';
+import 'package:catalyst/widgets/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -90,6 +96,33 @@ FakeApp _app() {
       Debt(id: 'd2', person: 'Mitu', direction: DebtDirection.borrowed, amount: 800, note: '', walletId: 'bk', occurredOn: _day(3), dueOn: null, closed: false, createdAt: ''),
     ]
     ..debtPayments = [DebtPayment(id: 'p1', debtId: 'd1', amount: 500, walletId: 'bk', paidOn: _day(2), note: '', createdAt: '')]
+    ..recurringReady = true
+    ..recurring = [
+      RecurringRule(
+        id: 'r1',
+        name: 'October pay',
+        kind: Kind.income,
+        amount: 65000,
+        walletId: 'bk',
+        schedule: Schedule(frequency: Frequency.twiceMonthly, day1: 1, day2: 15, time: '09:00', startOn: _day(60)),
+        nextOn: _day(-5),
+      ),
+      RecurringRule(
+        id: 'r2',
+        name: 'Netflix Premium family plan',
+        kind: Kind.expense,
+        amount: 1450,
+        schedule: Schedule(frequency: Frequency.weekly, every: 2, day1: 3, time: '20:30', startOn: _day(30)),
+        nextOn: _day(-2),
+        paused: true,
+      ),
+    ]
+    ..challenges = [
+      Challenge(id: 'c1', kind: ChallengeKind.spendUnder, target: 15000, startOn: _day(3), days: 14),
+      Challenge(id: 'c2', kind: ChallengeKind.skipCategory, target: 0, categoryName: 'Entertainment', startOn: _day(40), days: 21),
+      Challenge(id: 'c3', kind: ChallengeKind.noSpend, target: 3, startOn: _day(30), days: 7),
+    ]
+    ..zakat = const ZakatInputs(goldPrice: 185000, silverPrice: 3200, gold: 2.5, silver: 10, cash: 40000)
     ..dashboardHidden = [];
   return app;
 }
@@ -144,6 +177,9 @@ void main() {
     'bills': () => const BillsScreen(),
     'wallets': () => const WalletsScreen(),
     'dhar': () => const DharScreen(),
+    'recurring': () => const RecurringScreen(),
+    'streaks & challenges': () => const ChallengesScreen(),
+    'zakat': () => const ZakatScreen(),
     'settings': () => const SettingsScreen(),
     'about the app': () => const AboutScreen(),
   };
@@ -289,5 +325,25 @@ void main() {
     await tester.tap(find.text('open'));
     await settle();
     expect(find.text('৩টি যোগ করুন'), findsOneWidget);
+
+    await show(const RecurringScreen());
+    await tester.tap(find.text('নিয়মিত এন্ট্রি যোগ করুন'));
+    await settle();
+    expect(find.text('নতুন নিয়মিত এন্ট্রি'), findsOneWidget);
+    for (final often in ['মাসে দুবার', 'প্রতি ২ সপ্তাহে', 'প্রতি বছর']) {
+      await tester.tap(find.byType(AppDropdown).first);
+      await settle();
+      await tester.tap(find.text(often).last);
+      await settle();
+    }
+
+    await show(const ChallengesScreen());
+    await tester.scrollUntilVisible(find.text('চ্যালেঞ্জ শুরু করুন'), 300, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('চ্যালেঞ্জ শুরু করুন'));
+    await settle();
+    for (final kind in ['নির্দিষ্ট খরচের মধ্যে', 'একটি ক্যাটাগরি বাদ', 'নির্দিষ্ট সঞ্চয়', 'প্রতিদিন লেখা']) {
+      await tester.tap(find.text(kind));
+      await settle();
+    }
   });
 }

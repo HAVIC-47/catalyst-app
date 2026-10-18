@@ -5,8 +5,10 @@
 // New entry, Vault Mode, theme and sign out.
 //
 // It also runs the phone-side helpers: reminders and the home-screen widget
-// follow the data, notices (budget alerts, offline saves) show as snack bars,
-// and slim banners say when the app is offline and when a new version is out.
+// follow the data, notices (budget alerts, offline saves, recurring entries
+// added) show as snack bars, alerts (mood & money, streaks, challenges) as phone
+// notifications, and slim banners say when the app is offline and when a new
+// version is out.
 // A bKash / Nagad message shared to the app opens for review, and the first
 // launch after an update pops up what's new.
 import 'dart:async';
@@ -38,6 +40,7 @@ import 'bills_screen.dart';
 import 'boards_screen.dart';
 import 'budgets_screen.dart';
 import 'calendar_screen.dart';
+import 'challenges_screen.dart';
 import 'dashboard_screen.dart';
 import 'dhar_screen.dart';
 import 'entry_sheet.dart';
@@ -46,11 +49,13 @@ import 'journal_screen.dart';
 import 'ledger_screen.dart';
 import 'list_scan_sheet.dart';
 import 'memo_sheet.dart';
+import 'recurring_screen.dart';
 import 'settings_screen.dart';
 import 'sms_review_sheet.dart';
 import 'wallets_screen.dart';
+import 'zakat_screen.dart';
 
-enum Section { calendar, dashboard, ledger, journal, todo, shopping, budgets, goals, bills, wallets, dhar, settings }
+enum Section { calendar, dashboard, ledger, journal, todo, shopping, budgets, goals, bills, recurring, wallets, dhar, challenges, zakat, settings }
 
 const _calendarTab = (Section.calendar, 'Calendar', LucideIcons.calendarDays);
 const _dashboardTab = (Section.dashboard, 'Dashboard', LucideIcons.layoutGrid);
@@ -65,8 +70,11 @@ const _moreSections = [
   (Section.budgets, 'Budgets', LucideIcons.piggyBank),
   (Section.goals, 'Goals', LucideIcons.target),
   (Section.bills, 'Bills', LucideIcons.bell),
+  (Section.recurring, 'Recurring', LucideIcons.repeat),
   (Section.wallets, 'Wallets', LucideIcons.wallet),
   (Section.dhar, 'Dhar', LucideIcons.handCoins),
+  (Section.challenges, 'Challenges', LucideIcons.flame),
+  (Section.zakat, 'Zakat', LucideIcons.handHeart),
   (Section.settings, 'Settings', LucideIcons.settings),
 ];
 
@@ -91,6 +99,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _app.addListener(_onData);
     _subs
       ..add(_app.notices.stream.listen(_notice))
+      ..add(_app.alerts.stream.listen(_alert))
       ..add(Notifications.taps.stream.listen(_open))
       ..add(HomeWidget.actions.stream.listen(_widgetAction))
       ..add(SmsShare.shared.stream.listen(_shared));
@@ -109,7 +118,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  // Back in the foreground: pick up anything changed on the web meanwhile.
+  // Back in the foreground: pick up anything changed on the web meanwhile (a
+  // load also logs any recurring entry that came due).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -139,19 +149,28 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (await showWhatsNew(context, due) && mounted) await openAbout(context);
   }
 
-  /// Reminders and the widget follow the data (a moment after it settles).
+  /// Reminders, the widget and the streak / challenge alerts follow the data (a
+  /// moment after it settles).
   void _onData() {
     _follow?.cancel();
     _follow = Timer(const Duration(milliseconds: 600), () {
       if (_app.loading) return;
       Notifications.sync(_app);
       HomeWidget.sync(_app);
+      unawaited(_app.checkHabits());
     });
   }
 
   void _notice(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// A mood-spend alert, a streak milestone, a challenge's news: a notification on
+  /// the phone — or a snack bar when the phone doesn't allow notifications.
+  Future<void> _alert(AppAlert a) async {
+    if (await Notifications.alert(a.title, a.body, a.target)) return;
+    _notice('${a.title} — ${a.body}');
   }
 
   /// Where a notification leads.
@@ -164,6 +183,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         go(Section.bills);
       case NoticeTarget.dhar:
         go(Section.dhar);
+      case NoticeTarget.recurring:
+        go(Section.recurring);
+      case NoticeTarget.challenges:
+        go(Section.challenges);
       case NoticeTarget.update:
         final u = Updates.available.value;
         if (u != null) Updates.download(u);
@@ -193,7 +216,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// Never on top of a sheet or another pop-up.
   Future<void> _checkUpdate() async {
     final u = await Updates.check();
-    if (u == null || !mounted || !(ModalRoute.of(context)?.isCurrent ?? false)) return;
+    // Settings → Notifications → App updates off: just the banner.
+    if (u == null || !mounted || !_app.reminders.updates || !(ModalRoute.of(context)?.isCurrent ?? false)) return;
     if (!await Updates.shouldPrompt(u) || !mounted) return;
     await Updates.markPrompted(u);
     if (mounted) await showUpdateDialog(context, u);
@@ -207,7 +231,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// Ask once for notification permission (Android 13+) when a reminder is on.
   Future<void> _askForNotifications() async {
     final r = _app.reminders;
-    if (!Notifications.supported || !(r.checkin || r.bills || r.dhar || r.budgets)) return;
+    if (!Notifications.supported || r.onCount == 0) return;
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('notifications:asked') ?? false) return;
     await prefs.setBool('notifications:asked', true);
@@ -236,6 +260,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       Section.dashboard: DashboardScreen(
         onCustomize: () => openSettingsPage(context, SettingsPage.dashboard),
         onWallets: () => go(Section.wallets),
+        onChallenges: () => go(Section.challenges),
       ),
       Section.ledger: const LedgerScreen(),
       Section.journal: const JournalScreen(),
@@ -244,8 +269,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       Section.budgets: const BudgetsScreen(),
       Section.goals: const GoalsScreen(),
       Section.bills: const BillsScreen(),
+      Section.recurring: const RecurringScreen(),
       Section.wallets: const WalletsScreen(),
       Section.dhar: const DharScreen(),
+      Section.challenges: ChallengesScreen(onNotifications: () => openSettingsPage(context, SettingsPage.notifications)),
+      Section.zakat: const ZakatScreen(),
       Section.settings: const SettingsScreen(),
     };
     return AnnotatedRegion<SystemUiOverlayStyle>(
