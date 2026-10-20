@@ -258,7 +258,9 @@ Bump `version:` in `pubspec.yaml`, add what the release brings to `releases()` i
 (the What's new pop-up and the top of About — a test fails until the new version has its notes), and tag the
 GitHub release `v` + that version (e.g. `v1.6.0`), with `catalyst_<version>.apk` and `catalyst_<version>_arm64.apk`
 attached (upload the universal one first: versions before 1.6 take the first APK they find). The in-app update
-banner compares the installed version with the latest release and downloads its universal APK.
+banner compares the installed version with the latest release and downloads its universal APK. Both files carry
+the same version code, 2000 + the build number (the per-ABI arm64 build adds 2000; `build_apk.ps1` gives the
+universal build the same), so a phone can update from either file to either file.
 
 ### Logo
 

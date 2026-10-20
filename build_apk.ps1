@@ -25,6 +25,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "flutter pub get failed." -ForegroundColor
 
 # The file is named after the version in pubspec.yaml: catalyst_1.6.0.apk
 $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+# The per-ABI arm64 build's version code is 2000 + the build number; the universal
+# one gets the same, so a phone can go from either file to the other in an update.
+$build = [int](Select-String -Path pubspec.yaml -Pattern '^version:\s*[0-9.]+\+([0-9]+)').Matches[0].Groups[1].Value
 
 Write-Host "Building release APK (first build downloads Gradle deps and takes a few minutes)..." -ForegroundColor Cyan
 if ($Small) {
@@ -32,7 +35,7 @@ if ($Small) {
   $apk = "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk"
   $name = "catalyst_${version}_arm64.apk"
 } else {
-  & $flutter build apk --release --obfuscate --split-debug-info=build\symbols --dart-define-from-file=env.json
+  & $flutter build apk --release --build-number=$(2000 + $build) --obfuscate --split-debug-info=build\symbols --dart-define-from-file=env.json
   $apk = "build\app\outputs\flutter-apk\app-release.apk"
   $name = "catalyst_$version.apk"
 }
