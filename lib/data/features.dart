@@ -32,6 +32,23 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.6.0', [
+        Feature(LucideIcons.palette, tr('A brighter light mode'), tr('Livelier colors in light mode — moods, charts and categories pop, and the text stays easy to read.')),
+        Feature(
+          LucideIcons.shapes,
+          tr('Icons for categories'),
+          tr('Every category shows an icon instead of a letter — picked from its name, or choose one in Settings → Categories.'),
+        ),
+        Feature(
+          LucideIcons.gripVertical,
+          tr('Your order'),
+          tr('Drag the dashboard sections and your categories up or down (or use the arrows) — what matters most comes first.'),
+        ),
+        Feature(LucideIcons.wallet, tr('Scans know how you paid'), tr('A bKash, Nagad, card or bank screenshot — or a cash memo — picks its wallet by itself.')),
+        Feature(LucideIcons.coins, tr('Live gold and silver prices'), tr("Zakat goes at today's international prices, counting your gold by its purity (24K, 22K, 21K, 18K).")),
+        Feature(LucideIcons.eraser, tr('Erase my data'), tr('Settings → Account: delete every entry but keep the account, to start fresh.')),
+        Feature(LucideIcons.eye, tr('Remember me, and see your password'), tr('Choose whether the app keeps you signed in, and tap the eye to see what you typed.')),
+      ]),
       Release('1.5.0', [
         Feature(
           LucideIcons.repeat,
@@ -128,8 +145,8 @@ List<FeatureGroup> appFeatures() {
       Feature(
         LucideIcons.scanLine,
         tr('Memo scanner'),
-        tr('Photograph a memo or receipt, or pick a screenshot of your notes: its lines become entries for you to check. '
-            'Reads Bengali and English, printed or handwritten.'),
+        tr('Photograph a memo or receipt, or pick a screenshot of your notes: its lines become entries for you to check, in the '
+            'wallet it was paid from (bKash, Nagad, card, cash…). Reads Bengali and English, printed or handwritten.'),
       ),
       Feature(
         LucideIcons.wallet,
@@ -154,7 +171,7 @@ List<FeatureGroup> appFeatures() {
       Feature(
         LucideIcons.handHeart,
         tr('Zakat calculator'),
-        tr('Wallets and dhar come in by themselves; add gold, silver and the rest to see the nisab and the 2.5% due.'),
+        tr("Wallets and dhar come in by themselves; gold and silver go at today's international prices (or yours) — then the nisab and the 2.5% due."),
       ),
     ]),
     FeatureGroup(tr('Mood'), tr('& days'), [
@@ -229,7 +246,12 @@ List<FeatureGroup> appFeatures() {
       Feature(
         LucideIcons.slidersHorizontal,
         tr('Your dashboard'),
-        tr('Choose in Settings which sections the dashboard shows — the web follows the same choice.'),
+        tr('Choose in Settings which sections the dashboard shows, and in what order — the web follows the same choice.'),
+      ),
+      Feature(
+        LucideIcons.shapes,
+        tr('Categories your way'),
+        tr('An icon and a color for each, in the order you want — the entry screen lists them the same way.'),
       ),
     ]),
     FeatureGroup(tr('Account'), tr('& sync'), [
@@ -242,10 +264,11 @@ List<FeatureGroup> appFeatures() {
         LucideIcons.keyRound,
         tr('Sign-in'),
         googleSignIn
-            ? tr('Email and password or Google — and Forgot password if you lose it.')
-            : tr('Email and password — and Forgot password if you lose it.'),
+            ? tr('Email and password or Google, with Remember me — and Forgot password if you lose it.')
+            : tr('Email and password, with Remember me — and Forgot password if you lose it.'),
       ),
       Feature(LucideIcons.shieldCheck, tr('Private'), tr('Your entries are locked to your account — no one else can read them.')),
+      Feature(LucideIcons.eraser, tr('Erase my data'), tr('Deletes every entry but keeps the account — to start fresh.')),
       Feature(LucideIcons.userX, tr('Delete account'), tr('Removes the account and everything in it, from Settings.')),
     ]),
   ];

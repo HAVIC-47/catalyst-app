@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
 import '../data/app_state.dart';
+import '../data/remember.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../theme/theme_controller.dart';
@@ -30,8 +31,17 @@ class _AuthScreenState extends State<AuthScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _loading = false;
+  bool _remember = true; // stay signed in (as last chosen on this phone)
   String? _error;
   String? _notice;
+
+  @override
+  void initState() {
+    super.initState();
+    RememberMe.isOn().then((on) {
+      if (mounted) setState(() => _remember = on);
+    });
+  }
 
   @override
   void dispose() {
@@ -83,6 +93,7 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
     await _run((auth) async {
+      await RememberMe.set(_remember);
       if (signup) {
         final res = await auth.signUp(email: email, password: password);
         // If email confirmation is on, there's no session yet.
@@ -94,6 +105,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _google() => _run((auth) async {
+        await RememberMe.set(_remember);
         await auth.signInWithOAuth(OAuthProvider.google, redirectTo: authRedirect, authScreenLaunchMode: LaunchMode.externalApplication);
       });
 
@@ -121,10 +133,21 @@ class _AuthScreenState extends State<AuthScreen> {
             Row(children: [
               const BrandLogo(size: 30),
               const SizedBox(width: 10),
-              Text(tr('Catalyst'), style: displayStyle(p, 24)),
+              // The name shrinks a little on a narrow phone rather than push the buttons off.
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text(tr('Catalyst'), style: displayStyle(p, 24)),
+                      const SizedBox(width: 8),
+                      Label(tr('৳ BD'), color: p.accentA(0.94)),
+                    ]),
+                  ),
+                ),
+              ),
               const SizedBox(width: 8),
-              Label(tr('৳ BD'), color: p.accentA(0.94)),
-              const Spacer(),
               HairlineButton(
                 height: 40,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -192,25 +215,55 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   if (_mode != _Mode.forgot) ...[
                     const SizedBox(height: 10),
-                    TextField(
+                    PasswordField(
                       controller: _password,
-                      obscureText: true,
+                      hint: _mode == _Mode.signup ? tr('Create a password (min 8)') : tr('Password'),
                       autofillHints: [_mode == _Mode.signup ? AutofillHints.newPassword : AutofillHints.password],
                       onSubmitted: (_) => _submit(),
-                      decoration: InputDecoration(
-                        hintText: _mode == _Mode.signup ? tr('Create a password (min 8)') : tr('Password'),
-                        prefixIcon: Icon(LucideIcons.lock, size: 16, color: p.muted(0.35)),
-                      ),
                     ),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Expanded(
+                        child: Semantics(
+                          checked: _remember,
+                          label: tr('Remember me'),
+                          child: InkWell(
+                            onTap: () => setState(() => _remember = !_remember),
+                            borderRadius: BorderRadius.circular(8),
+                            child: ExcludeSemantics(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                child: Row(children: [
+                                  SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: Checkbox(
+                                      value: _remember,
+                                      onChanged: (v) => setState(() => _remember = v ?? true),
+                                      activeColor: p.accent,
+                                      checkColor: p.onAccent,
+                                      side: BorderSide(color: p.muted(0.35), width: 1.5),
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(child: Text(tr('Remember me'), style: bodyStyle(p, 13, color: p.muted(0.65)))),
+                                ]),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_mode == _Mode.login)
+                        Flexible(
+                          child: TextButton(
+                            onPressed: () => _switch(_Mode.forgot),
+                            child: Text(tr('Forgot password?'), textAlign: TextAlign.end, style: bodyStyle(p, 12.5, color: p.muted(0.55))),
+                          ),
+                        ),
+                    ]),
                   ],
-                  if (_mode == _Mode.login)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () => _switch(_Mode.forgot),
-                        child: Text(tr('Forgot password?'), style: bodyStyle(p, 12.5, color: p.muted(0.55))),
-                      ),
-                    ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     _Banner(text: _error!, color: p.expense),
@@ -346,19 +399,9 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
               padding: const EdgeInsets.all(22),
               radius: 16,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                TextField(
-                  controller: _password,
-                  obscureText: true,
-                  autofillHints: const [AutofillHints.newPassword],
-                  decoration: InputDecoration(hintText: tr('New password (min 8)'), prefixIcon: Icon(LucideIcons.lock, size: 16, color: p.muted(0.35))),
-                ),
+                PasswordField(controller: _password, hint: tr('New password (min 8)'), autofillHints: const [AutofillHints.newPassword]),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: _again,
-                  obscureText: true,
-                  onSubmitted: (_) => _save(),
-                  decoration: InputDecoration(hintText: tr('Type it again'), prefixIcon: Icon(LucideIcons.lock, size: 16, color: p.muted(0.35))),
-                ),
+                PasswordField(controller: _again, hint: tr('Type it again'), onSubmitted: (_) => _save()),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   _Banner(text: _error!, color: p.expense),

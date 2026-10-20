@@ -192,7 +192,8 @@ void main() {
   test('zakat: 2.5% at or above the nisab', () {
     expect(nisabWeight('silver', 'bhori'), closeTo(52.5, 1e-9));
     expect(nisabWeight('gold', 'bhori'), closeTo(7.5, 1e-9));
-    const inputs = ZakatInputs(silverPrice: 2000, goldPrice: 150000, gold: 1, cash: 10000, debts: 5000);
+    // Typed prices and pure gold (live prices and 22K are tested in features160_test.dart).
+    const inputs = ZakatInputs(autoPrices: false, karat: 24, silverPrice: 2000, goldPrice: 150000, gold: 1, cash: 10000, debts: 5000);
     final r = zakatOf(inputs, wallets: 100000, owedToYou: 20000, youOwe: 15000);
     expect((r.nisab, r.assets, r.liabilities, r.net, r.above, r.due), (105000.0, 280000.0, 20000.0, 260000.0, true, 6500.0));
     expect(zakatOf(inputs.copyWith(basis: 'gold'), wallets: 100000, owedToYou: 20000, youOwe: 15000).due, 0);

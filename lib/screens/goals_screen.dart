@@ -161,7 +161,7 @@ class _GoalCardState extends State<_GoalCard> {
             child: LinearProgressIndicator(
               value: pct,
               minHeight: 10,
-              color: done ? const Color(0xFF2E8159) : const Color(0xFF3D80BC),
+              color: done ? p.income : p.saving,
               backgroundColor: p.inkA(0.06),
             ),
           ),

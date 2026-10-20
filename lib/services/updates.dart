@@ -14,7 +14,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const releasesRepo = 'HAVIC-47/catalyst-app';
-const latestApkUrl = 'https://github.com/$releasesRepo/releases/latest/download/Catalyst.apk';
+
+/// The latest release's page (its APK carries the version in its name, so there's
+/// no fixed download link).
+const latestReleaseUrl = 'https://github.com/$releasesRepo/releases/latest';
 
 class UpdateInfo {
   const UpdateInfo({required this.version, required this.url, required this.page});
@@ -129,13 +132,16 @@ abstract final class Updates {
     final tag = '${j['tag_name'] ?? ''}'.trim();
     final version = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(tag)?.group(0);
     if (version == null) return null;
-    final assets = (j['assets'] as List? ?? const []).whereType<Map>();
-    final apk = assets.where((a) => a['name'] == 'Catalyst.apk').firstOrNull ??
-        assets.where((a) => '${a['name']}'.toLowerCase().endsWith('.apk')).firstOrNull;
+    final apks = [
+      for (final a in (j['assets'] as List? ?? const []).whereType<Map>())
+        if ('${a['name']}'.toLowerCase().endsWith('.apk')) a,
+    ];
+    // The universal APK — catalyst_1.6.0.apk (Catalyst.apk before 1.6) — not the arm64-only one.
+    final apk = apks.where((a) => !'${a['name']}'.toLowerCase().contains('arm64')).firstOrNull ?? apks.firstOrNull;
     return UpdateInfo(
       version: version,
-      url: apk?['browser_download_url'] as String? ?? latestApkUrl,
-      page: j['html_url'] as String? ?? 'https://github.com/$releasesRepo/releases/latest',
+      url: apk?['browser_download_url'] as String? ?? latestReleaseUrl,
+      page: j['html_url'] as String? ?? latestReleaseUrl,
     );
   }
 

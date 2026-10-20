@@ -9,13 +9,18 @@ const nisabSilverGrams = 612.36;
 const bhoriGrams = 11.664;
 const zakatRate = 0.025;
 
+/// Gold purities the calculator offers (karat / 24 = the share that's gold).
+const karats = [24, 22, 21, 18];
+
 class ZakatInputs {
   const ZakatInputs({
     this.basis = 'silver',
     this.unit = 'bhori',
+    this.autoPrices = true,
     this.goldPrice = 0,
     this.silverPrice = 0,
     this.gold = 0,
+    this.karat = 22,
     this.silver = 0,
     this.cash = 0,
     this.investments = 0,
@@ -27,9 +32,11 @@ class ZakatInputs {
 
   final String basis; // 'silver' or 'gold': which metal sets the nisab
   final String unit; // 'bhori' or 'g': gold and silver weights and prices are in it
-  final double goldPrice; // per unit
+  final bool autoPrices; // today's international prices (else goldPrice / silverPrice)
+  final double goldPrice; // per unit, 24K — used when autoPrices is off
   final double silverPrice;
   final double gold; // weight owned
+  final int karat; // the gold's purity: 24, 22, 21 or 18
   final double silver;
   final double cash; // cash and accounts not tracked in a wallet
   final double investments; // shares, business stock, other savings
@@ -47,12 +54,15 @@ class ZakatInputs {
     }
 
     bool b(String k) => r[k] is bool ? r[k] as bool : true;
+    final k = r['karat'];
     return ZakatInputs(
       basis: r['basis'] == 'gold' ? 'gold' : 'silver',
       unit: r['unit'] == 'g' ? 'g' : 'bhori',
+      autoPrices: b('autoPrices'),
       goldPrice: n('goldPrice'),
       silverPrice: n('silverPrice'),
       gold: n('gold'),
+      karat: k is num && karats.contains(k) ? k.toInt() : 22,
       silver: n('silver'),
       cash: n('cash'),
       investments: n('investments'),
@@ -66,9 +76,11 @@ class ZakatInputs {
   Map<String, dynamic> toJson() => {
         'basis': basis,
         'unit': unit,
+        'autoPrices': autoPrices,
         'goldPrice': goldPrice,
         'silverPrice': silverPrice,
         'gold': gold,
+        'karat': karat,
         'silver': silver,
         'cash': cash,
         'investments': investments,
@@ -81,9 +93,11 @@ class ZakatInputs {
   ZakatInputs copyWith({
     String? basis,
     String? unit,
+    bool? autoPrices,
     double? goldPrice,
     double? silverPrice,
     double? gold,
+    int? karat,
     double? silver,
     double? cash,
     double? investments,
@@ -95,9 +109,11 @@ class ZakatInputs {
       ZakatInputs(
         basis: basis ?? this.basis,
         unit: unit ?? this.unit,
+        autoPrices: autoPrices ?? this.autoPrices,
         goldPrice: goldPrice ?? this.goldPrice,
         silverPrice: silverPrice ?? this.silverPrice,
         gold: gold ?? this.gold,
+        karat: karat ?? this.karat,
         silver: silver ?? this.silver,
         cash: cash ?? this.cash,
         investments: investments ?? this.investments,
@@ -106,6 +122,21 @@ class ZakatInputs {
         useWallets: useWallets ?? this.useWallets,
         useDhar: useDhar ?? this.useDhar,
       );
+}
+
+/// Grams in one of a unit.
+double unitGrams(String unit) => unit == 'g' ? 1 : bhoriGrams;
+
+/// Today's international prices per gram (24K gold, pure silver), from the web's /api/metal-prices.
+typedef LivePrices = ({double gold, double silver});
+
+/// The prices the sums use, per unit: today's when auto and loaded, else the typed ones.
+({double gold, double silver}) pricesOf(ZakatInputs i, LivePrices? live) {
+  if (i.autoPrices && live != null) {
+    final g = unitGrams(i.unit);
+    return (gold: _cents(live.gold * g), silver: _cents(live.silver * g));
+  }
+  return (gold: i.goldPrice, silver: i.silverPrice);
 }
 
 /// The nisab's weight in a unit.
@@ -117,17 +148,19 @@ double nisabWeight(String basis, String unit) {
 double _cents(double n) => (n * 100).roundToDouble() / 100;
 
 /// What zakat is counted on ([net], never below zero), the nisab (0 until the
-/// nisab metal's price is filled in), whether it's reached, and what's due.
+/// nisab metal's price is known), whether it's reached, and what's due.
 typedef ZakatResult = ({double goldValue, double silverValue, double assets, double liabilities, double net, double nisab, bool above, double due});
 
-ZakatResult zakatOf(ZakatInputs i, {required double wallets, required double owedToYou, required double youOwe}) {
-  final goldValue = _cents(i.gold * i.goldPrice);
-  final silverValue = _cents(i.silver * i.silverPrice);
+ZakatResult zakatOf(ZakatInputs i, {required double wallets, required double owedToYou, required double youOwe, LivePrices? live}) {
+  final price = pricesOf(i, live);
+  // Only the gold in the jewellery counts: a 22K piece is 22/24 gold.
+  final goldValue = _cents(i.gold * price.gold * (i.karat / 24));
+  final silverValue = _cents(i.silver * price.silver);
   final assets = _cents((i.useWallets ? wallets : 0) + i.cash + (i.useDhar ? owedToYou : 0) + goldValue + silverValue + i.investments + i.other);
   final liabilities = _cents((i.useDhar ? youOwe : 0) + i.debts);
   final diff = _cents(assets - liabilities);
   final net = diff > 0 ? diff : 0.0;
-  final nisab = _cents(nisabWeight(i.basis, i.unit) * (i.basis == 'gold' ? i.goldPrice : i.silverPrice));
+  final nisab = _cents(nisabWeight(i.basis, i.unit) * (i.basis == 'gold' ? price.gold : price.silver));
   final above = nisab > 0 && net >= nisab;
   return (
     goldValue: goldValue,

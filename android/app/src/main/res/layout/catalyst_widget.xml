@@ -60,6 +60,6 @@
         android:gravity="center"
         android:includeFontPadding="false"
         android:text="+"
-        android:textColor="#F7F2E7"
+        android:textColor="@color/widget_on_accent"
         android:textSize="28sp" />
 </LinearLayout>

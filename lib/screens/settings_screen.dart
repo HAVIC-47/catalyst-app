@@ -1,8 +1,9 @@
 // Settings — port of the web's /app/settings: a list of what can be set, each
 // opening its own page: language and currency, notifications (each kind on or
-// off — both shared with the web through user metadata), dashboard sections,
-// categories, pasting a bKash / Nagad message, About the app (version, updates,
-// every feature, what's new) and the account (password, delete).
+// off — both shared with the web through user metadata), dashboard sections (on
+// or off, and their order), categories (icons, colors, order), pasting a bKash /
+// Nagad message, About the app (version, updates, every feature, what's new) and
+// the account (password, erasing the data, deleting the account).
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -18,6 +19,7 @@ import '../services/notifications.dart';
 import '../services/updates.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
+import '../util/category_icons.dart';
 import '../util/currency.dart';
 import '../util/format.dart';
 import '../util/i18n.dart';
@@ -99,7 +101,7 @@ class SettingsScreen extends StatelessWidget {
               accentHint: update != null,
               onTap: () => openAbout(context),
             ),
-            row(SettingsPage.account, LucideIcons.userRound, tr('Account'), email ?? tr('Your email and deleting the account')),
+            row(SettingsPage.account, LucideIcons.userRound, tr('Account'), email ?? tr('Your email, erasing your data and deleting the account')),
           ]),
         ],
       ),
@@ -179,7 +181,9 @@ class _HubRow extends StatelessWidget {
   }
 }
 
-/// One settings page: a back button and its title, then its cards.
+/// One settings page: a back button and its title, then its cards. Built from
+/// slivers: the dashboard and category pages hold lists you can drag into order,
+/// and dragging a row to the edge of the screen scrolls the page.
 class _SettingsPageView extends StatelessWidget {
   const _SettingsPageView(this.page);
 
@@ -189,29 +193,32 @@ class _SettingsPageView extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final app = context.watch<AppState>();
-    final (title, children) = switch (page) {
-      SettingsPage.language => (tr('Language & currency'), const <Widget>[_LanguageSection(), _CurrencySection()]),
-      SettingsPage.notifications => (tr('Notifications'), const <Widget>[_RemindersSection(), _AlertsSection()]),
+    Widget boxes(List<Widget> children) => SliverList.list(children: children);
+    final (title, slivers) = switch (page) {
+      SettingsPage.language => (tr('Language & currency'), [boxes(const [_LanguageSection(), _CurrencySection()])]),
+      SettingsPage.notifications => (tr('Notifications'), [boxes(const [_RemindersSection(), _AlertsSection()])]),
       SettingsPage.dashboard => (tr('Dashboard'), const <Widget>[_DashboardSections()]),
       SettingsPage.categories => (
           tr('Categories'),
-          <Widget>[
-            Text(
-              tr('Add, rename, recolor, or remove categories for expenses and income. Deleting one keeps past transactions labeled.'),
-              style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
-            ),
-            const SizedBox(height: 14),
-            _HubCard(children: [
-              for (final (kind, page, icon, title) in [
-                (Kind.expense, SettingsPage.expenseCategories, LucideIcons.arrowUpRight, tr('Expense categories')),
-                (Kind.income, SettingsPage.incomeCategories, LucideIcons.arrowDownLeft, tr('Income categories')),
-              ])
-                _HubRow(
-                  icon: icon,
-                  title: title,
-                  hint: trn(app.categories.where((c) => c.kind == kind).length, '{n} category', '{n} categories'),
-                  onTap: () => openSettingsPage(context, page),
-                ),
+          [
+            boxes([
+              Text(
+                tr('Add, rename, recolor, or remove categories for expenses and income — give each an icon and drag them into the order you want. Deleting one keeps past transactions labeled.'),
+                style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
+              ),
+              const SizedBox(height: 14),
+              _HubCard(children: [
+                for (final (kind, page, icon, title) in [
+                  (Kind.expense, SettingsPage.expenseCategories, LucideIcons.arrowUpRight, tr('Expense categories')),
+                  (Kind.income, SettingsPage.incomeCategories, LucideIcons.arrowDownLeft, tr('Income categories')),
+                ])
+                  _HubRow(
+                    icon: icon,
+                    title: title,
+                    hint: trn(app.categories.where((c) => c.kind == kind).length, '{n} category', '{n} categories'),
+                    onTap: () => openSettingsPage(context, page),
+                  ),
+              ]),
             ]),
           ],
         ),
@@ -220,32 +227,138 @@ class _SettingsPageView extends StatelessWidget {
           <Widget>[
             _CategorySection(kind: page == SettingsPage.expenseCategories ? Kind.expense : Kind.income),
             if (app.categories.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Text(tr('Loading categories…'), style: monoStyle(p, 12, color: p.muted(0.3))),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(tr('Loading categories…'), style: monoStyle(p, 12, color: p.muted(0.3))),
+                ),
               ),
           ],
         ),
-      SettingsPage.sms => (tr('bKash & Nagad'), const <Widget>[_SmsSection()]),
-      SettingsPage.account => (tr('Account'), const <Widget>[_AccountSection()]),
+      SettingsPage.sms => (tr('bKash & Nagad'), [boxes(const [_SmsSection()])]),
+      SettingsPage.account => (tr('Account'), [boxes(const [_AccountSection()])]),
     };
     return Scaffold(
       backgroundColor: p.paper,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-          children: [
-            Row(children: [
-              HairlineIconButton(icon: LucideIcons.arrowLeft, tooltip: tr('Back'), onPressed: () => Navigator.of(context).maybePop()),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: displayStyle(p, 24)),
+        child: CustomScrollView(slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            sliver: SliverMainAxisGroup(slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: Row(children: [
+                    HairlineIconButton(icon: LucideIcons.arrowLeft, tooltip: tr('Back'), onPressed: () => Navigator.of(context).maybePop()),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: displayStyle(p, 24)),
+                    ),
+                  ]),
+                ),
               ),
+              ...slivers,
             ]),
-            const SizedBox(height: 18),
-            ...children,
-          ],
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// A card (like CardBox) around a header and a sliver list, so the list is part
+/// of the page's own scrolling.
+class _CardSliver extends StatelessWidget {
+  const _CardSliver({required this.header, required this.list});
+
+  final Widget header;
+  final Widget list;
+
+  @override
+  Widget build(BuildContext context) => DecoratedSliver(
+        decoration: cardDecoration(Palette.of(context)),
+        sliver: SliverPadding(
+          padding: const EdgeInsets.all(16),
+          sliver: SliverMainAxisGroup(slivers: [SliverToBoxAdapter(child: header), list]),
         ),
+      );
+}
+
+/// [ids] with the one at [from] moved to [to].
+List<String> _moved(List<String> ids, int from, int to) {
+  final out = [...ids];
+  out.insert(to, out.removeAt(from));
+  return out;
+}
+
+/// The row being dragged, lifted a little (inside a Material, so its fields still
+/// work while it floats above the page).
+Widget _lift(Widget child, int index, Animation<double> animation) => AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) => Transform.scale(
+        scale: 1 + 0.02 * Curves.easeOut.transform(animation.value),
+        child: Material(type: MaterialType.transparency, child: child),
+      ),
+      child: child,
+    );
+
+/// A row that can be put in order: dragged by its handle, or moved one place at
+/// a time with the arrows (the way for screen readers, too).
+class _SortRow extends StatelessWidget {
+  const _SortRow({
+    super.key,
+    required this.index,
+    required this.count,
+    required this.name,
+    required this.onMove,
+    required this.child,
+    this.below,
+    this.dim = false,
+  });
+
+  final int index;
+  final int count;
+  final String name; // for the arrows' labels
+  final ValueChanged<int> onMove; // to this place
+  final Widget child;
+  final Widget? below; // full width under the row (a category's icon picker)
+  final bool dim; // a hidden dashboard section
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    Widget arrow(IconData icon, String label, int? to) => Tooltip(
+          message: label,
+          child: InkWell(
+            onTap: to == null ? null : () => onMove(to),
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(width: 34, height: 26, child: Icon(icon, size: 16, color: to == null ? p.muted(0.15) : p.muted(0.55))),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: dim ? p.inkA(0.06) : p.line),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            ReorderableDragStartListener(
+              index: index,
+              child: ExcludeSemantics(
+                child: SizedBox(width: 30, height: 52, child: Icon(LucideIcons.gripVertical, size: 16, color: p.muted(0.35))),
+              ),
+            ),
+            Expanded(child: child),
+            Column(mainAxisSize: MainAxisSize.min, children: [
+              arrow(LucideIcons.chevronUp, tr('Move {name} up', {'name': name}), index > 0 ? index - 1 : null),
+              arrow(LucideIcons.chevronDown, tr('Move {name} down', {'name': name}), index < count - 1 ? index + 1 : null),
+            ]),
+          ]),
+          ?below,
+        ]),
       ),
     );
   }
@@ -651,18 +764,17 @@ class _PasswordChangeState extends State<_PasswordChange> {
         ),
       );
     }
-    InputDecoration field(String hint) => InputDecoration(hintText: hint, prefixIcon: Icon(LucideIcons.lock, size: 16, color: p.muted(0.35)));
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(tr('Change password'), style: bodyStyle(p, 14, weight: FontWeight.w600)),
         const SizedBox(height: 10),
-        TextField(controller: _current, obscureText: true, autofillHints: const [AutofillHints.password], decoration: field(tr('Current password'))),
+        PasswordField(controller: _current, hint: tr('Current password'), autofillHints: const [AutofillHints.password]),
         const SizedBox(height: 10),
-        TextField(controller: _next, obscureText: true, autofillHints: const [AutofillHints.newPassword], decoration: field(tr('New password (min 8)'))),
+        PasswordField(controller: _next, hint: tr('New password (min 8)'), autofillHints: const [AutofillHints.newPassword]),
         const SizedBox(height: 10),
-        TextField(controller: _again, obscureText: true, onSubmitted: (_) => _save(), decoration: field(tr('Type it again'))),
+        PasswordField(controller: _again, hint: tr('Type it again'), onSubmitted: (_) => _save()),
         if (_error != null) ...[
           const SizedBox(height: 10),
           Text(_error!, style: bodyStyle(p, 12.5, color: p.expense, height: 1.4)),
@@ -670,9 +782,131 @@ class _PasswordChangeState extends State<_PasswordChange> {
         const SizedBox(height: 12),
         Row(children: [
           TextButton(onPressed: _busy ? null : _close, child: Text(tr('Cancel'), style: bodyStyle(p, 13.5, color: p.muted(0.6)))),
-          const Spacer(),
-          Flexible(child: PrimaryButton(label: tr('Change password'), height: 42, busy: _busy, onPressed: _save)),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: PrimaryButton(label: tr('Change password'), height: 42, busy: _busy, onPressed: _save),
+            ),
+          ),
         ]),
+      ]),
+    );
+  }
+}
+
+/// Erase my data: every entry goes, the account stays (login and settings) — for
+/// starting over, or handing the account back clean after a try-out.
+class _EraseData extends StatefulWidget {
+  const _EraseData();
+
+  @override
+  State<_EraseData> createState() => _EraseDataState();
+}
+
+class _EraseDataState extends State<_EraseData> {
+  final _confirm = TextEditingController();
+  bool _open = false;
+  bool _busy = false;
+  bool _done = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _confirm.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  bool get _typed => _confirm.text.trim() == 'ERASE';
+
+  Future<void> _erase() async {
+    if (!_typed || _busy) return;
+    final app = context.read<AppState>();
+    setState(() => _busy = true);
+    try {
+      await eraseData();
+      await app.afterErase();
+      if (!mounted) return;
+      setState(() {
+        _open = false;
+        _done = true;
+        _confirm.clear();
+      });
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.accentA(0.3)),
+        color: p.accentA(0.04),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(tr('Erase my data'), style: bodyStyle(p, 14, color: p.muted(0.8))),
+        const SizedBox(height: 2),
+        Text(
+          _done
+              ? tr('Done — everything you recorded is gone. Your account and settings are still here.')
+              : tr("Deletes every entry, mood, wallet, bill, goal, board and journal note, but keeps your account, password and settings — for starting fresh. This can't be undone."),
+          style: bodyStyle(p, 11.5, color: _done ? p.income : p.muted(0.45), height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        if (!_open)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: HairlineButton(
+              height: 40,
+              borderColor: p.accentA(0.5),
+              onPressed: () => setState(() {
+                _done = false;
+                _open = true;
+              }),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(LucideIcons.eraser, size: 15, color: p.accent),
+                const SizedBox(width: 8),
+                Text(tr('Erase…'), style: bodyStyle(p, 13.5, weight: FontWeight.w600, color: p.accent)),
+              ]),
+            ),
+          )
+        else ...[
+          TextField(
+            controller: _confirm,
+            autocorrect: false,
+            textCapitalization: TextCapitalization.characters,
+            style: monoStyle(p, 14),
+            decoration: InputDecoration(hintText: tr('Type ERASE')),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            TextButton(
+              onPressed: _busy
+                  ? null
+                  : () => setState(() {
+                        _open = false;
+                        _confirm.clear();
+                      }),
+              child: Text(tr('Cancel'), style: bodyStyle(p, 13.5, color: p.muted(0.6))),
+            ),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: PrimaryButton(label: tr('Erase my data'), height: 42, busy: _busy, onPressed: _typed ? _erase : null),
+              ),
+            ),
+          ]),
+        ],
       ]),
     );
   }
@@ -733,6 +967,8 @@ class _AccountSectionState extends State<_AccountSection> {
         ),
         const SizedBox(height: 14),
         const _PasswordChange(),
+        const SizedBox(height: 14),
+        const _EraseData(),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(12),
@@ -813,6 +1049,7 @@ class _AccountSectionState extends State<_AccountSection> {
   }
 }
 
+/// Each dashboard section on or off, and in the order you want them.
 class _DashboardSections extends StatelessWidget {
   const _DashboardSections();
 
@@ -821,64 +1058,79 @@ class _DashboardSections extends StatelessWidget {
     final p = Palette.of(context);
     final app = context.watch<AppState>();
     final hidden = app.dashboardHidden ?? const <String>[];
-    return CardBox(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            Expanded(child: CardTitle(tr('Dashboard'), tr('sections'))),
+    final order = app.dashboardOrder;
+    final byId = {for (final s in dashboardSections) s.$1: s};
+    final rows = [for (final id in order) byId[id]!];
+    final defaultOrder = [for (final s in dashboardSections) s.$1];
+    final isDefault = order.join(',') == defaultOrder.join(',');
+    return _CardSliver(
+      header: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: CardTitle(tr('Dashboard'), tr('sections'))),
+          Label(digits('${dashboardSections.length - hidden.length} / ${dashboardSections.length}')),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          tr('Choose what the dashboard shows, and drag the sections into the order you want — the ones you care about most at the top. Hidden sections keep all their data.'),
+          style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
+        ),
+        if (!isDefault || hidden.isNotEmpty)
+          Wrap(spacing: 4, children: [
+            if (!isDefault)
+              TextButton(
+                onPressed: () => app.setDashboardOrder(defaultOrder),
+                child: Text(tr('DEFAULT ORDER'), style: monoStyle(p, 11, color: p.accentA(0.85), letterSpacing: 1.4)),
+              ),
             if (hidden.isNotEmpty)
               TextButton(
                 onPressed: () => app.setDashboardHidden([]),
                 child: Text(tr('SHOW ALL'), style: monoStyle(p, 11, color: p.accentA(0.85), letterSpacing: 1.4)),
               ),
-            Label(digits('${dashboardSections.length - hidden.length} / ${dashboardSections.length}')),
           ]),
-          const SizedBox(height: 4),
-          Text(
-            tr("Choose what the dashboard shows. Hidden sections keep all their data — it's still recorded and comes back the moment you turn the section on."),
-            style: bodyStyle(p, 13.5, color: p.muted(0.45), height: 1.45),
-          ),
-          const SizedBox(height: 12),
-          for (final s in dashboardSections)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Builder(builder: (context) {
-                final on = !hidden.contains(s.$1);
-                return Semantics(
-                  toggled: on,
-                  label: tr(s.$2),
-                  child: Material(
-                    color: on ? p.inkA(0.02) : Colors.transparent,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: p.line)),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: app.dashboardHidden == null
-                          ? null
-                          : () => app.setDashboardHidden(on ? [...hidden, s.$1] : hidden.where((id) => id != s.$1).toList()),
-                      child: ExcludeSemantics(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          child: Row(children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(tr(s.$2), style: bodyStyle(p, 14, color: on ? p.muted(0.85) : p.muted(0.45))),
-                                  Text(tr(s.$3), style: bodyStyle(p, 11.5, color: p.muted(0.35))),
-                                ],
-                              ),
-                            ),
-                            PillSwitch(on: on),
-                          ]),
-                        ),
+        const SizedBox(height: 12),
+      ]),
+      list: SliverReorderableList(
+        itemCount: rows.length,
+        onReorderStart: (_) => HapticFeedback.selectionClick(),
+        onReorderItem: (from, to) => app.setDashboardOrder(_moved(order, from, to)),
+        proxyDecorator: _lift,
+        itemBuilder: (context, i) {
+          final s = rows[i];
+          final on = !hidden.contains(s.$1);
+          return _SortRow(
+            key: ValueKey(s.$1),
+            index: i,
+            count: rows.length,
+            name: tr(s.$2),
+            dim: !on,
+            onMove: (to) => app.setDashboardOrder(_moved(order, i, to)),
+            child: Semantics(
+              toggled: on,
+              label: tr(s.$2),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: app.dashboardHidden == null
+                    ? null
+                    : () => app.setDashboardHidden(on ? [...hidden, s.$1] : hidden.where((id) => id != s.$1).toList()),
+                child: ExcludeSemantics(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(2, 9, 8, 9),
+                    child: Row(children: [
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(tr(s.$2), style: bodyStyle(p, 14, color: on ? p.muted(0.85) : p.muted(0.45))),
+                          Text(tr(s.$3), style: bodyStyle(p, 11.5, color: p.muted(0.35))),
+                        ]),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      PillSwitch(on: on),
+                    ]),
                   ),
-                );
-              }),
+                ),
+              ),
             ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -895,6 +1147,8 @@ class _CategorySection extends StatefulWidget {
 class _CategorySectionState extends State<_CategorySection> {
   final _name = TextEditingController();
   String _color = _swatches.first;
+  String? _icon; // null = picked from the name
+  String? _picking; // the category whose icon picker is open, or 'new'
   bool _busy = false;
 
   @override
@@ -909,23 +1163,37 @@ class _CategorySectionState extends State<_CategorySection> {
     super.dispose();
   }
 
+  /// Icons need the 1.6 database update (categories.icon); say so instead of a raw error.
+  void _failed(Object e) {
+    if (!mounted) return;
+    if ('$e'.toLowerCase().contains('icon')) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Category icons need the database update — run db/supabase.sql in Supabase.'))));
+    } else {
+      showError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final app = context.watch<AppState>();
     final list = app.categories.where((c) => c.kind == widget.kind).toList();
     final kindName = widget.kind == Kind.expense ? tr('Expense') : tr('Income');
+    final newName = _name.text.trim().isEmpty ? '—' : _name.text.trim();
 
     Future<void> add() async {
       final n = _name.text.trim();
       if (n.isEmpty || _busy) return;
       setState(() => _busy = true);
       try {
+        // First in its list: below the lowest sort number of its kind.
         final first = list.isEmpty ? 0 : list.map((c) => c.sort).reduce((a, b) => a < b ? a : b) - 1;
-        await app.createCategory(name: n, kind: widget.kind, color: _color, sort: first);
+        await app.createCategory(name: n, kind: widget.kind, color: _color, sort: first, icon: _icon);
         _name.clear();
+        _icon = null;
+        _picking = null;
       } catch (e) {
-        if (context.mounted) showError(context, e);
+        _failed(e);
       } finally {
         if (mounted) setState(() => _busy = false);
       }
@@ -943,76 +1211,118 @@ class _CategorySectionState extends State<_CategorySection> {
           await app.createCategory(name: d.$1, kind: widget.kind, color: d.$2, sort: i++);
         }
       } catch (e) {
-        if (context.mounted) showError(context, e);
+        _failed(e);
       } finally {
         if (mounted) setState(() => _busy = false);
       }
     }
 
-    return CardBox(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            Expanded(child: Text(kindName, style: displayStyle(p, 20))),
-            TextButton(
-              onPressed: _busy ? null : restoreDefaults,
-              child: Text(tr('RESTORE DEFAULTS'), style: monoStyle(p, 10.5, color: p.accentA(0.85), letterSpacing: 1.3)),
-            ),
-            Label('${list.length}'),
-          ]),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: p.line),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _name,
-                      inputFormatters: maxChars(Limits.name),
-                      onSubmitted: (_) => add(),
-                      decoration: InputDecoration(hintText: tr('New {name} category', {'name': tr(widget.kind.name)})),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 44,
-                    child: PrimaryButton(label: '', semanticLabel: tr('Add category'), icon: LucideIcons.plus, height: 44, busy: _busy, onPressed: _name.text.trim().isEmpty ? null : add),
-                  ),
-                ]),
-                const SizedBox(height: 12),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final s in _swatches)
-                    GestureDetector(
-                      onTap: () => setState(() => _color = s),
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(color: hexColor(s), shape: BoxShape.circle),
-                        child: _color == s ? const Icon(LucideIcons.check, size: 14, color: Colors.white) : null,
-                      ),
-                    ),
-                ]),
-              ],
-            ),
+    void reorder(int from, int to) => app.reorderCategories(_moved([for (final c in list) c.id], from, to)).catchError(_failed);
+
+    return _CardSliver(
+      header: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: Text(kindName, style: displayStyle(p, 20))),
+          TextButton(
+            onPressed: _busy ? null : restoreDefaults,
+            child: Text(tr('RESTORE DEFAULTS'), style: monoStyle(p, 10.5, color: p.accentA(0.85), letterSpacing: 1.3)),
           ),
-          const SizedBox(height: 8),
-          for (final c in list) _CategoryRow(key: ValueKey(c.id), category: c),
-        ],
+          Label('${list.length}'),
+        ]),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              _BadgeButton(
+                name: newName,
+                icon: _icon,
+                color: hexColor(_color),
+                open: _picking == 'new',
+                tooltip: tr('Choose an icon'),
+                onTap: () => setState(() => _picking = _picking == 'new' ? null : 'new'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _name,
+                  inputFormatters: maxChars(Limits.name),
+                  onSubmitted: (_) => add(),
+                  decoration: InputDecoration(hintText: tr('New {name} category', {'name': tr(widget.kind.name)})),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 44,
+                child: PrimaryButton(label: '', semanticLabel: tr('Add category'), icon: LucideIcons.plus, height: 44, busy: _busy, onPressed: _name.text.trim().isEmpty ? null : add),
+              ),
+            ]),
+            if (_picking == 'new') ...[
+              const SizedBox(height: 12),
+              _IconPicker(
+                name: newName,
+                value: _icon,
+                color: hexColor(_color),
+                onPick: (v) => setState(() {
+                  _icon = v;
+                  _picking = null;
+                }),
+              ),
+            ],
+            const SizedBox(height: 12),
+            _Swatches(value: _color, onPick: (s) => setState(() => _color = s)),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          tr('Drag to put them in the order you want — the entry screen lists them the same way.'),
+          style: bodyStyle(p, 11.5, color: p.muted(0.45), height: 1.4),
+        ),
+        const SizedBox(height: 8),
+      ]),
+      list: SliverReorderableList(
+        itemCount: list.length,
+        onReorderStart: (_) => HapticFeedback.selectionClick(),
+        onReorderItem: reorder,
+        proxyDecorator: _lift,
+        itemBuilder: (context, i) {
+          final c = list[i];
+          return _CategoryRow(
+            key: ValueKey(c.id),
+            category: c,
+            index: i,
+            count: list.length,
+            picking: _picking == c.id,
+            onPicking: () => setState(() => _picking = _picking == c.id ? null : c.id),
+            onMove: (to) => reorder(i, to),
+            onFailed: _failed,
+          );
+        },
       ),
     );
   }
 }
 
 class _CategoryRow extends StatefulWidget {
-  const _CategoryRow({super.key, required this.category});
+  const _CategoryRow({
+    super.key,
+    required this.category,
+    required this.index,
+    required this.count,
+    required this.picking,
+    required this.onPicking,
+    required this.onMove,
+    required this.onFailed,
+  });
+
   final Category category;
+  final int index;
+  final int count;
+  final bool picking; // its icon and color picker is open
+  final VoidCallback onPicking;
+  final ValueChanged<int> onMove;
+  final void Function(Object error) onFailed;
 
   @override
   State<_CategoryRow> createState() => _CategoryRowState();
@@ -1031,6 +1341,13 @@ class _CategoryRowState extends State<_CategoryRow> {
   }
 
   @override
+  void didUpdateWidget(_CategoryRow old) {
+    super.didUpdateWidget(old);
+    // Renamed elsewhere (or put back after a failed save): show it, unless it's being typed.
+    if (old.category.name != widget.category.name && !_focus.hasFocus) _ctrl.text = widget.category.name;
+  }
+
+  @override
   void dispose() {
     _ctrl.dispose();
     _focus.dispose();
@@ -1043,7 +1360,15 @@ class _CategoryRowState extends State<_CategoryRow> {
     try {
       await context.read<AppState>().editCategory(widget.category.id, name: v);
     } catch (e) {
-      if (mounted) showError(context, e);
+      widget.onFailed(e);
+    }
+  }
+
+  Future<void> _edit({String? color, String? icon, bool clearIcon = false}) async {
+    try {
+      await context.read<AppState>().editCategory(widget.category.id, color: color, icon: icon, clearIcon: clearIcon);
+    } catch (e) {
+      widget.onFailed(e);
     }
   }
 
@@ -1052,72 +1377,193 @@ class _CategoryRowState extends State<_CategoryRow> {
     final p = Palette.of(context);
     final app = context.read<AppState>();
     final c = widget.category;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(10, 8, 2, 8),
-      decoration: BoxDecoration(
+    return _SortRow(
+      index: widget.index,
+      count: widget.count,
+      name: tr(c.name),
+      onMove: widget.onMove,
+      below: widget.picking ? _picker(p, c) : null,
+      child: Row(children: [
+        _BadgeButton(
+          name: c.name,
+          icon: c.icon,
+          color: hexColor(c.color),
+          open: widget.picking,
+          tooltip: tr('Change the icon of {name}', {'name': tr(c.name)}),
+          onTap: widget.onPicking,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: _ctrl,
+            focusNode: _focus,
+            inputFormatters: maxChars(Limits.name),
+            onSubmitted: (_) => _rename(),
+            style: bodyStyle(p, 14, color: p.muted(0.85)),
+            decoration: const InputDecoration(
+              filled: false,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(vertical: 8),
+            ),
+          ),
+        ),
+        TrashButton(
+          tooltip: tr('Delete {name}', {'name': c.name}),
+          onPressed: () async {
+            if (!await confirm(context, tr('Delete "{name}"?', {'name': c.name}))) return;
+            try {
+              await app.removeCategory(c.id);
+            } catch (e) {
+              widget.onFailed(e);
+            }
+          },
+        ),
+      ]),
+    );
+  }
+
+  /// Under the row: its icon, then its color.
+  Widget _picker(Palette p, Category c) => Padding(
+        padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Divider(color: p.line, height: 1),
+          const SizedBox(height: 12),
+          _IconPicker(
+            name: c.name,
+            value: c.icon,
+            color: hexColor(c.color),
+            onPick: (v) {
+              widget.onPicking();
+              _edit(icon: v, clearIcon: v == null);
+            },
+          ),
+          const SizedBox(height: 12),
+          _Swatches(value: c.color.toUpperCase(), onPick: (s) => _edit(color: s)),
+        ]),
+      );
+}
+
+/// A category's badge as a button: opens its icon (and color) picker.
+class _BadgeButton extends StatelessWidget {
+  const _BadgeButton({required this.name, required this.icon, required this.color, required this.open, required this.tooltip, required this.onTap});
+
+  final String name;
+  final String? icon;
+  final Color color;
+  final bool open;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: p.line),
-        color: p.inkA(0.02),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            CategoryBadge(name: c.name, color: hexColor(c.color), size: 32),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: _ctrl,
-                focusNode: _focus,
-                inputFormatters: maxChars(Limits.name),
-                onSubmitted: (_) => _rename(),
-                style: bodyStyle(p, 14, color: p.muted(0.85)),
-                decoration: const InputDecoration(
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 8),
-                ),
-              ),
-            ),
-            TrashButton(
-              tooltip: tr('Delete {name}', {'name': c.name}),
-              onPressed: () async {
-                if (!await confirm(context, tr('Delete "{name}"?', {'name': c.name}))) return;
-                try {
-                  await app.removeCategory(c.id);
-                } catch (e) {
-                  if (context.mounted) showError(context, e);
-                }
-              },
-            ),
-          ]),
-          const SizedBox(height: 4),
-          Wrap(spacing: 6, children: [
-            for (final s in _swatches.take(8))
-              GestureDetector(
-                onTap: () async {
-                  try {
-                    await app.editCategory(c.id, color: s);
-                  } catch (e) {
-                    if (context.mounted) showError(context, e);
-                  }
-                },
-                child: Container(
-                  width: 18,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    color: hexColor(s),
-                    shape: BoxShape.circle,
-                    border: c.color.toUpperCase() == s ? Border.all(color: p.ink, width: 2) : null,
-                  ),
-                ),
-              ),
-          ]),
-        ],
+        child: Container(
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: open ? p.accentA(0.6) : Colors.transparent, width: 1.5),
+          ),
+          child: CategoryBadge(name: name, icon: icon, color: color, size: 36),
+        ),
       ),
     );
+  }
+}
+
+/// Every icon a category can have, plus Auto (picked from its name).
+class _IconPicker extends StatelessWidget {
+  const _IconPicker({required this.name, required this.value, required this.color, required this.onPick});
+
+  final String name;
+  final String? value; // null = Auto
+  final Color color; // the category's, as stored
+  final ValueChanged<String?> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final auto = categoryIconName(name);
+    final tint = p.tintText(p.vivid(color));
+    Widget cell({required bool on, required bool suggested, required String label, required VoidCallback onTap, required Widget child}) => Tooltip(
+          message: label,
+          child: Semantics(
+            selected: on,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(9),
+              child: Container(
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(9),
+                  color: on ? p.accentA(0.1) : null,
+                  border: Border.all(color: on ? p.accentA(0.6) : (suggested ? p.accentA(0.35) : p.line)),
+                ),
+                child: child,
+              ),
+            ),
+          ),
+        );
+    final cells = [
+      cell(
+        on: value == null,
+        suggested: false,
+        label: tr('Auto — from the name'),
+        onTap: () => onPick(null),
+        child: Text(tr('Auto'), maxLines: 1, style: monoStyle(p, 9.5, weight: FontWeight.w600, color: value == null ? p.ink : p.muted(0.5))),
+      ),
+      for (final e in categoryIcons.entries)
+        cell(
+          on: value == e.key,
+          suggested: value == null && e.key == auto,
+          label: e.key.replaceAll('-', ' '),
+          onTap: () => onPick(e.key),
+          child: Icon(e.value, size: 19, color: tint),
+        ),
+    ];
+    return LayoutBuilder(builder: (context, box) {
+      const gap = 6.0;
+      final perRow = ((box.maxWidth + gap) / 48).floor().clamp(6, 10);
+      final w = ((box.maxWidth - gap * (perRow - 1)) / perRow).floorToDouble();
+      return Wrap(spacing: gap, runSpacing: gap, children: [for (final c in cells) SizedBox(width: w, child: c)]);
+    });
+  }
+}
+
+/// The category colors to pick from.
+class _Swatches extends StatelessWidget {
+  const _Swatches({required this.value, required this.onPick});
+
+  final String value;
+  final ValueChanged<String> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      for (final s in _swatches)
+        Semantics(
+          button: true,
+          selected: value == s,
+          label: tr('Pick color {s}', {'s': s}),
+          child: InkWell(
+            onTap: () => onPick(s),
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(color: p.vivid(hexColor(s)), shape: BoxShape.circle),
+              child: value == s ? const Icon(LucideIcons.check, size: 14, color: Colors.white) : null,
+            ),
+          ),
+        ),
+    ]);
   }
 }

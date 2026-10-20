@@ -12,6 +12,27 @@ Wallet? defaultWallet(List<Wallet> wallets) {
   return live.firstOrNull ?? wallets.firstOrNull;
 }
 
+/// The wallet a scanned memo or screenshot was paid from or into, by what the
+/// reader saw on it ("bkash", "nagad", "rocket", "upay", "bank", "card" or
+/// "cash"): the wallet with that name, or of that kind. Null when nothing fits
+/// (the web's walletForPayment).
+Wallet? walletForPayment(String? paid, List<Wallet> wallets) {
+  if (paid == null || paid.isEmpty) return null;
+  final live = wallets.where((w) => !w.archived).toList();
+  Wallet? named(String re) => live.where((w) => RegExp(re, caseSensitive: false).hasMatch(w.name)).firstOrNull;
+  Wallet? ofKind(WalletKind k) => live.where((w) => w.kind == k).firstOrNull;
+  return switch (paid) {
+    'bkash' => named(r'b\s*-?\s*kash|বিকাশ'),
+    'nagad' => named(r'nagad|নগদ'),
+    'rocket' => named(r'rocket|dbbl|dutch.?bangla|রকেট'),
+    'upay' => named(r'upay|উপায়'),
+    'card' => ofKind(WalletKind.card) ?? named(r'card|visa|master|amex|কার্ড') ?? ofKind(WalletKind.bank),
+    'bank' => ofKind(WalletKind.bank) ?? named(r'bank|ব্যাংক'),
+    'cash' => ofKind(WalletKind.cash) ?? named(r'cash|নগদ টাকা|ক্যাশ'),
+    _ => null,
+  };
+}
+
 /// The wallet an entry counts in: its own, else the default one (older entries
 /// and entries whose wallet was deleted). Null when there are no wallets.
 Wallet? Function(Txn) walletNamer(List<Wallet> wallets) {

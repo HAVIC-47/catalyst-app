@@ -64,11 +64,26 @@ class FakeApp extends AppState {
   }
 
   @override
-  Future<Category> createCategory({required String name, required Kind kind, required String color, required int sort}) async {
-    final c = Category(id: _next('cat'), name: name, kind: kind, color: color, sort: sort);
+  Future<Category> createCategory({required String name, required Kind kind, required String color, required int sort, String? icon}) async {
+    final c = Category(id: _next('cat'), name: name, kind: kind, color: color, sort: sort, icon: icon);
     categories = orderCategories([...categories, c]);
     notifyListeners();
     return c;
+  }
+
+  @override
+  Future<void> editCategory(String id, {String? name, String? color, String? icon, bool clearIcon = false}) async {
+    categories = [
+      for (final c in categories) c.id == id ? c.copyWith(name: name, color: color, icon: icon, clearIcon: clearIcon) : c,
+    ];
+    notifyListeners();
+  }
+
+  @override
+  Future<void> reorderCategories(List<String> ids) async {
+    final sortOf = {for (final (i, id) in ids.indexed) id: i};
+    categories = orderCategories([for (final c in categories) c.copyWith(sort: sortOf[c.id])]);
+    notifyListeners();
   }
 
   @override

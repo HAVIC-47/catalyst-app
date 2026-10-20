@@ -22,6 +22,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
 import '../data/app_state.dart';
+import '../data/remember.dart';
 import '../models.dart';
 import '../services/notifications.dart';
 import '../services/sms.dart';
@@ -119,13 +120,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   // Back in the foreground: pick up anything changed on the web meanwhile (a
-  // load also logs any recurring entry that came due).
+  // load also logs any recurring entry that came due) — or, with "Remember me"
+  // off and the app away for a while, log in again.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _app.load();
-      unawaited(_checkUpdate());
-    }
+    if (state == AppLifecycleState.paused) unawaited(RememberMe.away());
+    if (state == AppLifecycleState.resumed) unawaited(_resume());
+  }
+
+  Future<void> _resume() async {
+    if (await RememberMe.expired()) return _app.signOut();
+    _app.load();
+    await _checkUpdate();
   }
 
   Future<void> _start() async {
@@ -411,7 +417,7 @@ class _UpdateBanner extends StatelessWidget {
           action: tr('Update'),
           onAction: () async {
             if (!await Updates.download(u) && context.mounted) {
-              showError(context, tr('Couldn\'t open the download — get it from {url}', {'url': latestApkUrl}));
+              showError(context, tr('Couldn\'t open the download — get it from {url}', {'url': latestReleaseUrl}));
             }
           },
           onClose: () => Updates.dismiss(u),
@@ -436,7 +442,14 @@ class _TopBar extends StatelessWidget {
         children: [
           Label(tr('Today')),
           const SizedBox(width: 8),
-          Text(fmt(DateTime.now(), 'EEE, MMM d, yyyy'), style: monoStyle(p, 14, color: p.muted(0.7))),
+          // Some dates run long in Bangla on a small phone: shrink a little rather than clip.
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(fmt(DateTime.now(), 'EEE, MMM d, yyyy'), maxLines: 1, style: monoStyle(p, 14, color: p.muted(0.7))),
+            ),
+          ),
         ],
       ),
     );

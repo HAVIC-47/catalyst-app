@@ -30,17 +30,22 @@ class Repo {
     return rows.map(_keep('categories', Category.fromRow)).toList();
   }
 
-  static Future<Category> addCategory({required String name, required Kind kind, required String color, required int sort}) async {
+  static Future<Category> addCategory({required String name, required Kind kind, required String color, required int sort, String? icon}) async {
     final row = await _db
         .from('categories')
-        .insert({'name': name, 'kind': kind.name, 'color': color, 'sort': sort})
+        // The icon only when chosen, so categories still save before the 1.6 database update.
+        .insert({'name': name, 'kind': kind.name, 'color': color, 'sort': sort, 'icon': ?icon})
         .select()
         .single();
     return Category.fromRow(row);
   }
 
-  static Future<void> updateCategory(String id, {String? name, String? color}) async {
-    await _db.from('categories').update({'name': ?name, 'color': ?color}).eq('id', id);
+  /// [clearIcon]: back to the icon picked from the name.
+  static Future<void> updateCategory(String id, {String? name, String? color, String? icon, bool clearIcon = false, int? sort}) async {
+    await _db
+        .from('categories')
+        .update({'name': ?name, 'color': ?color, if (icon != null || clearIcon) 'icon': icon, 'sort': ?sort})
+        .eq('id', id);
   }
 
   static Future<void> deleteCategory(String id) => _db.from('categories').delete().eq('id', id);

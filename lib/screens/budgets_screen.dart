@@ -165,17 +165,18 @@ class _BudgetCardState extends State<_BudgetCard> {
     final app = context.read<AppState>();
     final b = widget.budget;
     final cat = app.categories.where((c) => c.id == b.categoryId).firstOrNull;
-    final catColor = cat != null ? hexColor(cat.color) : const Color(0xFF7A746A);
+    final rawColor = cat != null ? hexColor(cat.color) : const Color(0xFF7A746A);
+    final catColor = p.vivid(rawColor);
     final pct = b.amount > 0 ? (widget.spent / b.amount).clamp(0.0, 1.0) : 0.0;
     final over = widget.spent > b.amount;
-    final barColor = over ? const Color(0xFFCB453B) : (cat != null ? catColor : const Color(0xFF3D80BC));
+    final barColor = over ? p.expense : (cat != null ? catColor : p.saving);
     return CardBox(
       margin: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [
-            CategoryBadge(name: tr(b.categoryName), color: catColor, size: 28),
+            CategoryBadge(name: b.categoryName, icon: cat?.icon, color: rawColor, size: 28),
             const SizedBox(width: 10),
             Expanded(child: Text(tr(b.categoryName), style: bodyStyle(p, 14, weight: FontWeight.w500, color: p.muted(0.85)))),
             TrashButton(

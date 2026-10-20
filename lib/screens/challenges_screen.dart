@@ -200,7 +200,7 @@ class _ChallengeCard extends StatelessWidget {
     final color = switch (p.status) {
       ChallengeStatus.won => pal.income,
       ChallengeStatus.lost => pal.expense,
-      _ => c.kind == ChallengeKind.spendUnder && p.ratio > 0.8 ? const Color(0xFFC06A33) : const Color(0xFF3D80BC),
+      _ => c.kind == ChallengeKind.spendUnder && p.ratio > 0.8 ? pal.mood(2) : pal.saving,
     };
     final when = switch (p.status) {
       ChallengeStatus.upcoming => tr('Starts {date}', {'date': fmt(fromDateKey(c.startOn), 'MMM d')}),

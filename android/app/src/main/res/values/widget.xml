@@ -1,23 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Home-screen widget: paper card, ink figures, terracotta add button. -->
+    <!-- Home-screen widget: white card, indigo-ink figures, vivid coral add button. -->
     <color name="widget_card">#FFFFFF</color>
-    <color name="widget_line">#1A181512</color>
-    <color name="widget_ink">#181512</color>
-    <color name="widget_muted">#A3181512</color>
-    <color name="widget_accent">#B2462C</color>
+    <color name="widget_line">#1A11101F</color>
+    <color name="widget_ink">#11101F</color>
+    <color name="widget_muted">#A311101F</color>
+    <color name="widget_accent">#D4381C</color>
+    <color name="widget_on_accent">#FFFFFF</color>
     <string name="widget_label">Spent today</string>
     <string name="widget_placeholder">—</string>
     <string name="widget_open">Open Catalyst to update</string>
     <string name="widget_add">New entry</string>
     <string name="widget_description">Today\'s spending, with a quick add</string>
-    <color name="widget_chip">#0D181512</color>
+    <color name="widget_chip">#0D11101F</color>
     <!-- Mood faces (MoodWidget): the app's mood colors, a shade lighter at night. -->
-    <color name="widget_mood_1">#A8322A</color>
-    <color name="widget_mood_2">#C06A33</color>
-    <color name="widget_mood_3">#A68A2C</color>
-    <color name="widget_mood_4">#6E8C46</color>
-    <color name="widget_mood_5">#2E8159</color>
+    <color name="widget_mood_1">#E11D48</color>
+    <color name="widget_mood_2">#EA580C</color>
+    <color name="widget_mood_3">#D97706</color>
+    <color name="widget_mood_4">#65A30D</color>
+    <color name="widget_mood_5">#059669</color>
     <string name="widget_today_name">Spent today</string>
     <string name="widget_month_name">This month</string>
     <string name="widget_month_title">This month</string>

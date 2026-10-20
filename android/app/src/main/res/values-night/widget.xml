@@ -5,6 +5,7 @@
     <color name="widget_ink">#FAF9F6</color>
     <color name="widget_muted">#8CFAF9F6</color>
     <color name="widget_accent">#E28670</color>
+    <color name="widget_on_accent">#F7F2E7</color>
     <color name="widget_chip">#14FFFFFF</color>
     <color name="widget_mood_1">#E26A5E</color>
     <color name="widget_mood_2">#E0905A</color>

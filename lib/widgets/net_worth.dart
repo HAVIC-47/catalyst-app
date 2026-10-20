@@ -15,8 +15,6 @@ import '../util/i18n.dart';
 import '../util/networth.dart';
 import 'ui.dart';
 
-const _blue = Color(0xFF3D80BC);
-
 class NetWorthCard extends StatelessWidget {
   const NetWorthCard({super.key, this.onTap});
 
@@ -57,7 +55,7 @@ class NetWorthCard extends StatelessWidget {
               child: Semantics(
                 label: tr('Net worth'),
                 value: [for (final s in series) formatCurrency(s.total)].join(', '),
-                child: CustomPaint(painter: _AreaPainter([for (final s in series) s.total], line: p.line), size: Size.infinite),
+                child: CustomPaint(painter: _AreaPainter([for (final s in series) s.total], line: p.line, color: p.saving), size: Size.infinite),
               ),
             ),
             const SizedBox(height: 6),
@@ -75,10 +73,11 @@ class NetWorthCard extends StatelessWidget {
 }
 
 class _AreaPainter extends CustomPainter {
-  _AreaPainter(this.values, {required this.line});
+  _AreaPainter(this.values, {required this.line, required this.color});
 
   final List<double> values;
   final Color line;
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -113,22 +112,22 @@ class _AreaPainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [_blue.withValues(alpha: 0.35), _blue.withValues(alpha: 0.02)],
+          colors: [color.withValues(alpha: 0.35), color.withValues(alpha: 0.02)],
         ).createShader(Offset.zero & size),
     );
     canvas.drawPath(
       path,
       Paint()
-        ..color = _blue
+        ..color = color
         ..strokeWidth = 2
         ..style = PaintingStyle.stroke
         ..strokeJoin = StrokeJoin.round,
     );
-    canvas.drawCircle(at(values.length - 1), 3.5, Paint()..color = _blue);
+    canvas.drawCircle(at(values.length - 1), 3.5, Paint()..color = color);
   }
 
   @override
-  bool shouldRepaint(_AreaPainter old) => old.values.join(',') != values.join(',') || old.line != line;
+  bool shouldRepaint(_AreaPainter old) => old.values.join(',') != values.join(',') || old.line != line || old.color != color;
 }
 
 /// The streak and the challenges going (opens Streaks & challenges).

@@ -5,10 +5,25 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
+import '../util/category_icons.dart';
 import '../util/format.dart';
 import '../util/i18n.dart';
 
 /// `.card`: hairline border, card fill, soft lift on light; lit slab on black.
+/// A card's box: its color, hairline border and shadow (CardBox, and the cards
+/// around lists that scroll with the page).
+BoxDecoration cardDecoration(Palette p, {double radius = 10}) => BoxDecoration(
+      color: p.card,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: p.line),
+      boxShadow: p.dark
+          ? const [BoxShadow(color: Color(0xF2000000), blurRadius: 40, offset: Offset(0, 14), spreadRadius: -22)]
+          : const [
+              BoxShadow(color: Color(0x0F11101F), blurRadius: 2, offset: Offset(0, 1)),
+              BoxShadow(color: Color(0x334C1D95), blurRadius: 26, offset: Offset(0, 10), spreadRadius: -14),
+            ],
+    );
+
 class CardBox extends StatelessWidget {
   const CardBox({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.radius = 10, this.margin});
 
@@ -23,17 +38,7 @@ class CardBox extends StatelessWidget {
     final r = BorderRadius.circular(radius);
     return Container(
       margin: margin,
-      decoration: BoxDecoration(
-        color: p.card,
-        borderRadius: r,
-        border: Border.all(color: p.line),
-        boxShadow: p.dark
-            ? const [BoxShadow(color: Color(0xF2000000), blurRadius: 40, offset: Offset(0, 14), spreadRadius: -22)]
-            : const [
-                BoxShadow(color: Color(0x0D181512), blurRadius: 2, offset: Offset(0, 1)),
-                BoxShadow(color: Color(0x29181512), blurRadius: 24, offset: Offset(0, 8), spreadRadius: -14),
-              ],
-      ),
+      decoration: cardDecoration(p, radius: radius),
       child: ClipRRect(
         borderRadius: r,
         child: Stack(
@@ -75,18 +80,19 @@ class CardBox extends StatelessWidget {
 
 /// `.label`: mono, uppercase, wide tracking, muted.
 class Label extends StatelessWidget {
-  const Label(this.text, {super.key, this.color, this.size = 11});
+  const Label(this.text, {super.key, this.color, this.size = 11, this.maxLines = 1});
 
   final String text;
   final Color? color;
   final double size;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return Text(
       text.toUpperCase(),
-      maxLines: 1,
+      maxLines: maxLines,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontFamily: Fonts.mono,
@@ -330,8 +336,8 @@ class SegTabs<T> extends StatelessWidget {
               color: on ? (p.dark ? p.inkA(0.08) : p.card) : Colors.transparent,
               boxShadow: on && !p.dark
                   ? const [
-                      BoxShadow(color: Color(0x1A181512), blurRadius: 2, offset: Offset(0, 1)),
-                      BoxShadow(color: Color(0x0F181512), blurRadius: 0, spreadRadius: 1),
+                      BoxShadow(color: Color(0x1A11101F), blurRadius: 2, offset: Offset(0, 1)),
+                      BoxShadow(color: Color(0x0F11101F), blurRadius: 0, spreadRadius: 1),
                     ]
                   : null,
             ),
@@ -441,24 +447,67 @@ class OptionChip extends StatelessWidget {
 }
 
 /// Category initial badge (letter on a pale tint of the category color).
+/// A category's icon (its own, or one guessed from the name) on a tint of its
+/// color — the web's CategoryIcon.
 class CategoryBadge extends StatelessWidget {
-  const CategoryBadge({super.key, required this.name, required this.color, this.size = 36});
+  const CategoryBadge({super.key, required this.name, this.icon, required this.color, this.size = 36});
 
   final String name;
-  final Color color;
+  final String? icon;
+  final Color color; // as stored; the theme makes it vivid on light paper
   final double size;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final c = p.vivid(color);
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(8)),
-      child: Text(
-        name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
-        style: bodyStyle(p, 12, weight: FontWeight.w700, color: p.tintText(color)),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(size >= 32 ? 10 : 8)),
+      child: Icon(categoryIcon(name, icon), size: (size * 0.5).roundToDouble(), color: p.tintText(c)),
+    );
+  }
+}
+
+/// A password box with an eye to show or hide what's typed.
+class PasswordField extends StatefulWidget {
+  const PasswordField({super.key, required this.controller, required this.hint, this.autofillHints, this.onSubmitted, this.textInputAction});
+
+  final TextEditingController controller;
+  final String hint;
+  final Iterable<String>? autofillHints;
+  final ValueChanged<String>? onSubmitted;
+  final TextInputAction? textInputAction;
+
+  @override
+  State<PasswordField> createState() => _PasswordFieldState();
+}
+
+class _PasswordFieldState extends State<PasswordField> {
+  bool _show = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return TextField(
+      controller: widget.controller,
+      obscureText: !_show,
+      autocorrect: false,
+      enableSuggestions: false,
+      autofillHints: widget.autofillHints,
+      textInputAction: widget.textInputAction,
+      onSubmitted: widget.onSubmitted,
+      decoration: InputDecoration(
+        hintText: widget.hint,
+        prefixIcon: Icon(LucideIcons.lock, size: 16, color: p.muted(0.35)),
+        suffixIcon: IconButton(
+          onPressed: () => setState(() => _show = !_show),
+          tooltip: _show ? tr('Hide password') : tr('Show password'),
+          isSelected: _show,
+          icon: Icon(_show ? LucideIcons.eyeOff : LucideIcons.eye, size: 18, color: p.muted(0.5)),
+        ),
       ),
     );
   }
@@ -490,15 +539,16 @@ class EmptyCard extends StatelessWidget {
 
 /// Labeled form field row (label above control).
 class FieldBlock extends StatelessWidget {
-  const FieldBlock({super.key, required this.label, required this.child});
+  const FieldBlock({super.key, required this.label, required this.child, this.labelLines = 1});
 
   final String label;
   final Widget child;
+  final int labelLines; // a long label wraps instead of being cut
 
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [Label(label), const SizedBox(height: 7), child],
+        children: [Label(label, maxLines: labelLines), const SizedBox(height: 7), child],
       );
 }
 

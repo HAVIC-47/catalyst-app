@@ -4,11 +4,11 @@
 
 **Money meets _mood_.** Track every taka against how the day actually felt.
 
-[![Download APK](https://img.shields.io/badge/Download-Catalyst%20APK-B2462C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst.apk)
+[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.6.0-D4381C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.0/catalyst_1.6.0.apk)
 &nbsp;
-[![Latest release](https://img.shields.io/github/v/release/HAVIC-47/catalyst-app?style=for-the-badge&color=181512&label=version)](https://github.com/HAVIC-47/catalyst-app/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/HAVIC-47/catalyst-app?style=for-the-badge&color=11101F&label=version)](https://github.com/HAVIC-47/catalyst-app/releases/latest)
 
-**Direct download (latest version):** https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst.apk
+**Direct download (1.6.0):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.0/catalyst_1.6.0.apk · every version: [releases](https://github.com/HAVIC-47/catalyst-app/releases)
 
 Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https://catalyst-hishab.vercel.app)
 
@@ -42,20 +42,28 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
 
 ## Install
 
-1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst.apk)**
+1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.0/catalyst_1.6.0.apk)**
    (or download it on a computer and send it over USB, Drive, Telegram…).
-2. Open the downloaded `Catalyst.apk`. Android asks once to allow installs from your browser or
-   file manager — allow it, then tap **Install**.
+2. Open the downloaded `catalyst_1.6.0.apk` (the file is named after its version). Android asks once to allow
+   installs from your browser or file manager — allow it, then tap **Install**.
 3. Log in with your Catalyst account, or create one.
 
 The download is a universal APK (~60 MB) that runs on any Android phone. A smaller build for
-modern 64-bit phones, [`Catalyst-arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/latest/download/Catalyst-arm64.apk) (~22 MB), is attached to every
+modern 64-bit phones, [`catalyst_1.6.0_arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.0/catalyst_1.6.0_arm64.apk) (~22 MB), is attached to every
 [release](https://github.com/HAVIC-47/catalyst-app/releases).
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 From 1.4.0 the app tells you when a new version is out: tap **Update** and the new APK downloads.
 
-**New in 1.5.0:** **recurring income and expenses** — salary on the 1st, rent, subscriptions: pick the day
+**New in 1.6.0:** a **brighter light mode** — livelier colors that pop, with text that stays easy to read;
+**icons for categories** instead of letters (picked from the name, or choose one); **your order** — drag the
+dashboard sections and your categories up or down (or use the arrows); **scans know how you paid** — a bKash,
+Nagad, card or bank screenshot, or a cash memo, picks its wallet by itself; **live gold and silver prices** for
+zakat, with your gold's purity (24K, 22K, 21K, 18K); **Erase my data** in Settings → Account (every entry goes,
+the account stays); **Remember me** on the login screen; and an **eye** to see the password you type. The APK is
+now named after its version: `catalyst_1.6.0.apk`.
+
+**1.5.0:** **recurring income and expenses** — salary on the 1st, rent, subscriptions: pick the day
 (weekly, every 2 weeks, twice a month, monthly, every 3 months, yearly) and the time, and each one is added to your
 ledger by itself, with a notification; **mood-spend alerts** when a low day comes with a lot more spending than
 usual; **streaks and challenges** (no-spend days, spending under an amount, skipping a category, saving, logging
@@ -102,7 +110,7 @@ the memo scanner and Journal now lives in More. Install it over the older versio
 The app talks to the **same Supabase backend** as the [web app](https://github.com/HAVIC-47/catalyst)
 ([live](https://catalyst-hishab.vercel.app)). Log in with the same email and you see the same
 transactions, moods, budgets, goals, bills, recurring entries, challenges, wallets, dhar, journal and boards — and
-the same settings (language, currency, notifications, dashboard sections, the zakat figures). Anything added on one shows up on the other —
+the same settings (language, currency, notifications, dashboard sections and their order, the zakat figures). Anything added on one shows up on the other —
 pull down to refresh, or just reopen the app.
 
 ## Features
@@ -114,7 +122,7 @@ pull down to refresh, or just reopen the app.
   flow bars against the mood line, with correlation), and charts for spending and income by category,
   mood distribution, savings, mood tags and category frequency, plus **net worth over time** (what's in your
   wallets plus dhar owed to you, minus dhar you owe, at the end of each month) and your streak with the challenges
-  going. Choose which sections to show in Settings — the choice is shared with the web app.
+  going. Choose which sections to show, and drag them into the order you want, in Settings — shared with the web app.
 - **Ledger** — every transaction grouped by day, with search (note, category, place, amount, even
   "october" or "monday") and filters by type, period or date range, category and amount. Tap the pen on
   any transaction to change its type, amount, category, date, time, place or note (or delete it) — every
@@ -123,7 +131,8 @@ pull down to refresh, or just reopen the app.
   a photo or a screenshot of your notes (Notepad, any notes app) with expenses and income. Check what it found,
   then save: a memo's items — plus VAT or service charge — each become an expense, with any discount shared
   out; a note's lines become expenses and income, and categories it names that you don't have yet are created
-  for you. Reads Bengali and English, printed or handwritten.
+  for you. The wallet comes from the image too: a bKash, Nagad, card or bank screenshot, or a cash memo, picks it by
+  itself (change it if you like). Reads Bengali and English, printed or handwritten.
 - **To-do and To buy** — Jira-style boards in More: status columns (To do → In progress → Done; To buy →
   In cart → Bought), numbered tickets with priority, due date, notes and — on to-buy lists — a price. Press and
   hold a ticket to drag it within or across columns, or a column's title to move the column left or right (the
@@ -150,8 +159,9 @@ pull down to refresh, or just reopen the app.
   in it now; every entry picks its wallet; transfers move money between wallets without counting as spending, and
   a fee (a bKash cash-out) is logged as an expense.
 - **Dhar / baki** — money you lent or borrowed, grouped by person: part payments, settle in full, write off.
-- **Zakat calculator** — More → Zakat: your wallets and dhar come in by themselves; add cash elsewhere, gold and
-  silver (in bhori or grams, at today's price), investments and debts due now. It shows the nisab (silver or gold)
+- **Zakat calculator** — More → Zakat: your wallets and dhar come in by themselves; add cash elsewhere, gold (and
+  its purity — 24K, 22K, 21K or 18K) and silver in bhori or grams, investments and debts due now. Gold and silver go
+  at today's international prices (or type your own). It shows the nisab (silver or gold)
   and the 2.5% due, and **Log it as paid** adds it to the ledger. The figures are kept with your account.
 - **Streaks and challenges** — More → Challenges: a streak for every day you log something (with the last 28 days
   at a glance), and challenges — no-spend days, spending under an amount, skipping a category, saving an amount or
@@ -178,16 +188,20 @@ pull down to refresh, or just reopen the app.
 - **Vault Mode** — count all income and spending against your savings pool.
 - **Currency** — taka by default; Settings switches how amounts are written (dollar, Canadian dollar, euro, rupee…).
 - **বাংলা** — the whole app in Bangla, with Bengali dates and digits (Settings → Language, or on the login screen).
-- **Account** — change password (Settings → Account: the current one, then the new one), forgot password (the
-  email's link opens the app to set a new one), optional Google sign-in, and Delete account.
+- **Account** — **Remember me** on the login screen (off: the app asks you to log in again once it's been closed or
+  away for a few minutes), an eye to see the password you type, change password (Settings → Account: the current
+  one, then the new one), forgot password (the email's link opens the app to set a new one), optional Google
+  sign-in, **Erase my data** (every entry, wallet, bill, board and note goes; the account and settings stay — for
+  starting fresh) and Delete account.
 - **Updates** — when a new version is on GitHub the app pops up (once per version, again a few days after
   **Later**) and shows a banner; **Update** starts the download. The first launch after an update pops up what's new.
 - **About the app** — everything the app does, with what's new in this version on top, plus the version and
   **Check for updates**.
 - **Settings** — a short list that says how each thing is set (language and currency, notifications, dashboard,
   categories, bKash & Nagad, About the app, account); each opens its own page. Categories has an Expense and an
-  Income page; a new category is added at the top and comes first everywhere.
-- **Dark and light themes** — dark by default, the same design as the web.
+  Income page: give each category an icon and a color, and drag them into your order — the entry screen lists them
+  the same way.
+- **Dark and light themes** — dark by default; the light theme is bright and lively. The same design as the web.
 
 ## Build from source
 
@@ -197,7 +211,7 @@ Requirements: [Flutter](https://docs.flutter.dev/get-started/install) 3.47+, JDK
 git clone https://github.com/HAVIC-47/catalyst-app.git
 cd catalyst-app
 copy env.example.json env.json     # then fill in your Supabase URL + anon key
-.\build_apk.bat                    # -> dist\Catalyst.apk
+.\build_apk.bat                    # -> dist\catalyst_<version>.apk
 ```
 
 `build_apk.ps1` options: `-Small` builds the 64-bit-only APK, `-Install` installs it on a phone
@@ -242,8 +256,9 @@ bKash / Nagad messages), so from 1.4.1 a message reaches the app only when the u
 
 Bump `version:` in `pubspec.yaml`, add what the release brings to `releases()` in `lib/data/features.dart`
 (the What's new pop-up and the top of About — a test fails until the new version has its notes), and tag the
-GitHub release `v` + that version (e.g. `v1.4.0`), with `Catalyst.apk` attached: the in-app update banner
-compares the installed version with the latest release and downloads its `Catalyst.apk`.
+GitHub release `v` + that version (e.g. `v1.6.0`), with `catalyst_<version>.apk` and `catalyst_<version>_arm64.apk`
+attached (upload the universal one first: versions before 1.6 take the first APK they find). The in-app update
+banner compares the installed version with the latest release and downloads its universal APK.
 
 ### Logo
 

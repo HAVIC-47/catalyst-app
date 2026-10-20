@@ -202,13 +202,14 @@ class CategoryDonut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorOf = {for (final c in categories) c.name: hexColor(c.color)};
+    final p = Palette.of(context);
+    final colorOf = {for (final c in categories) c.name: p.vivid(hexColor(c.color))};
     final totals = <String, double>{};
     for (final t in transactions) {
       if (t.kind != kind || !inRange(t.occurredOn, window.startKey, window.endKey)) continue;
       totals[t.categoryName] = (totals[t.categoryName] ?? 0) + t.amount;
     }
-    final slices = [for (final e in totals.entries) _Slice(tr(e.key), e.value, colorOf[e.key] ?? _fallback)]
+    final slices = [for (final e in totals.entries) _Slice(tr(e.key), e.value, colorOf[e.key] ?? p.vivid(_fallback))]
       ..sort((a, b) => b.value.compareTo(a.value));
     if (slices.isEmpty) return _NoData(kind == Kind.expense ? tr('No spending this period.') : tr('No income this period.'));
     final total = slices.fold<double>(0, (s, x) => s + x.value);
@@ -235,9 +236,10 @@ class MoodDonut extends StatelessWidget {
       if (!inRange(m.loggedOn, window.startKey, window.endKey)) continue;
       counts[m.mood] = (counts[m.mood] ?? 0) + 1;
     }
+    final pal = Palette.of(context);
     final slices = [
-      for (final p in moodPresets)
-        if ((counts[p.value] ?? 0) > 0) _Slice(p.label, (counts[p.value] ?? 0).toDouble(), p.color, mood: p.value),
+      for (final m in moodPresets)
+        if ((counts[m.value] ?? 0) > 0) _Slice(m.label, (counts[m.value] ?? 0).toDouble(), pal.mood(m.value), mood: m.value),
     ];
     if (slices.isEmpty) return _NoData(tr('No moods logged this period.'));
     final total = slices.fold<double>(0, (s, x) => s + x.value);
@@ -274,7 +276,7 @@ class SavingsDonut extends StatelessWidget {
         broken += t.amount;
       }
     }
-    const addedColor = Color(0xFF3D80BC), brokenColor = Color(0xFFCB453B);
+    final addedColor = p.saving, brokenColor = p.expense;
     final slices = [
       if (added > 0) _Slice(tr('Added'), added, addedColor),
       if (broken > 0) _Slice(tr('Broken'), broken, brokenColor),
@@ -395,7 +397,8 @@ class MoodTagBars extends StatelessWidget {
       }
     }
     final entries = counts.entries.toList();
-    final bars = [for (final (i, e) in entries.indexed) (tr('${e.key}|tag'), e.value, _tagColors[i % _tagColors.length])]
+    final p = Palette.of(context);
+    final bars = [for (final (i, e) in entries.indexed) (tr('${e.key}|tag'), e.value, p.vivid(_tagColors[i % _tagColors.length]))]
       ..sort((a, b) => b.$2.compareTo(a.$2));
     if (bars.isEmpty) return _NoData(tr('No mood tags logged this period.'));
     return HBars(bars: bars.take(10).toList());
@@ -411,13 +414,14 @@ class CategoryBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorOf = {for (final c in categories) c.name: hexColor(c.color)};
+    final p = Palette.of(context);
+    final colorOf = {for (final c in categories) c.name: p.vivid(hexColor(c.color))};
     final counts = <String, int>{};
     for (final t in transactions) {
       if (t.kind == Kind.saving || !inRange(t.occurredOn, window.startKey, window.endKey)) continue;
       counts[t.categoryName] = (counts[t.categoryName] ?? 0) + 1;
     }
-    final bars = [for (final e in counts.entries) (tr(e.key), e.value, colorOf[e.key] ?? _fallback)]
+    final bars = [for (final e in counts.entries) (tr(e.key), e.value, colorOf[e.key] ?? p.vivid(_fallback))]
       ..sort((a, b) => b.$2.compareTo(a.$2));
     if (bars.isEmpty) return _NoData(tr('No transactions this period.'));
     return HBars(bars: bars.take(10).toList());
@@ -654,7 +658,7 @@ class _TrendTip extends StatelessWidget {
               style: bodyStyle(p, 12, color: point.net >= 0 ? p.income : p.expense)),
           if (point.saving > 0) Text(tr('Saving +{amount}', {'amount': formatCurrency(point.saving)}), style: bodyStyle(p, 12, color: p.saving)),
           Text(point.mood == null ? tr('Mood —') : tr('Mood {value} / 5', {'value': point.mood!}),
-              style: bodyStyle(p, 12, color: const Color(0xFF9268A0))),
+              style: bodyStyle(p, 12, color: p.violetText)),
         ],
       ),
     );
@@ -683,7 +687,6 @@ class _TrendPainter extends CustomPainter {
   final bool dots;
   final int? selected;
 
-  static const _moodColor = Color(0xFF7A4E86);
 
   void _text(Canvas canvas, String s, Offset at, Color color, {TextAlign align = TextAlign.left, double size = 10.5}) {
     final tp = TextPainter(
@@ -728,7 +731,7 @@ class _TrendPainter extends CustomPainter {
       _text(canvas, compactCurrency(t), Offset(g.left - 6, y(t)), axisText, align: TextAlign.right);
     }
     for (var m = 1; m <= 5; m++) {
-      _text(canvas, digits('$m'), Offset(size.width - g.right + 7, ym(m.toDouble())), const Color(0xFF9268A0));
+      _text(canvas, digits('$m'), Offset(size.width - g.right + 7, ym(m.toDouble())), p.violetText);
     }
 
     // Selected band highlight.
@@ -760,8 +763,8 @@ class _TrendPainter extends CustomPainter {
         canvas.drawRRect(rr, Paint()..color = color);
       }
 
-      bar(c - barW - 1, points[i].net, points[i].net >= 0 ? const Color(0xFF2E8159) : const Color(0xFFCB453B));
-      bar(c + 1, points[i].saving, const Color(0xFF3D80BC));
+      bar(c - barW - 1, points[i].net, points[i].net >= 0 ? p.income : p.expense);
+      bar(c + 1, points[i].saving, p.saving);
     }
 
     // Mood line (monotone cubic through logged buckets, gaps connected).
@@ -775,12 +778,12 @@ class _TrendPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2
-          ..color = _moodColor,
+          ..color = p.violet,
       );
     }
     if (dots || pts.length == 1) {
       for (final o in pts) {
-        canvas.drawCircle(o, 3, Paint()..color = _moodColor);
+        canvas.drawCircle(o, 3, Paint()..color = p.violet);
       }
     }
 

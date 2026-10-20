@@ -22,6 +22,7 @@ import '../util/currency.dart';
 import '../util/format.dart';
 import '../util/i18n.dart';
 import '../util/limits.dart';
+import '../util/money.dart';
 import '../widgets/scan_ui.dart';
 import '../widgets/ui.dart';
 import '../widgets/wallet_picker.dart';
@@ -184,6 +185,7 @@ class _MemoSheetState extends State<MemoSheet> {
   ({int count, double spent, double earned, List<Category> created})? _noted;
   int _run = 0; // bumps on reset, so a late reply from an abandoned scan is ignored
   String? _walletId; // where the money came from / went (null = the one used last)
+  String? _detected; // the wallet the image itself pointed to (a bKash or Nagad screenshot, a bank slip, a cash memo)
 
   /// The wallet the scanned entries go in (null while the database has no wallets).
   String? _wallet(AppState app) => app.walletsReady ? _walletId ?? startWallet(app.wallets) : null;
@@ -220,6 +222,9 @@ class _MemoSheetState extends State<MemoSheet> {
       _step = _Step.pick;
       _photo = null;
       _memo = null;
+      // A wallet picked from the last image doesn't carry over to the next one.
+      if (_detected != null && _walletId == _detected) _walletId = null;
+      _detected = null;
       _lines = [];
       _entries = [];
       _noted = null;
@@ -270,6 +275,13 @@ class _MemoSheetState extends State<MemoSheet> {
       });
       if (!mounted || run != _run) return;
       final notes = data['notes'], memo = data['memo'];
+      // Paid with bKash, Nagad, a card, cash…: start with that wallet.
+      final app = context.read<AppState>();
+      final read = notes is Map ? notes : memo;
+      final paid = read is Map ? read['paidWith'] : null;
+      final found = app.walletsReady ? walletForPayment(paid is String ? paid : null, app.wallets) : null;
+      _detected = found?.id;
+      if (found != null) _walletId = found.id;
       if (notes is Map<String, dynamic>) {
         _reviewNotes(_Notes.fromJson(notes));
       } else if (memo is Map<String, dynamic>) {
@@ -765,11 +777,18 @@ class _MemoSheetState extends State<MemoSheet> {
 
   /// The wallet picker for the review screens (nothing until the database has wallets).
   List<Widget> _walletField() {
+    final p = Palette.of(context);
     final app = context.watch<AppState>();
     if (!app.walletsReady || app.wallets.isEmpty) return const [];
+    // Says which wallet the image pointed to, while it's still the one picked.
+    final seen = _detected != null && _detected == _wallet(app) ? app.wallets.where((w) => w.id == _detected).firstOrNull : null;
     return [
       const SizedBox(height: 14),
       WalletPicker(value: _wallet(app), onChanged: (id) => setState(() => _walletId = id), label: tr('Wallet')),
+      if (seen != null) ...[
+        const SizedBox(height: 6),
+        Text(tr('Paid with {name} — picked from the image.', {'name': tr(seen.name)}), style: bodyStyle(p, 11.5, color: p.muted(0.5), height: 1.35)),
+      ],
     ];
   }
 

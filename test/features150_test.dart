@@ -4,6 +4,7 @@
 // sections, and the new sections in the More sheet.
 import 'package:catalyst/data/app_state.dart';
 import 'package:catalyst/data/insights.dart';
+import 'package:catalyst/data/metal_prices.dart';
 import 'package:catalyst/models.dart';
 import 'package:catalyst/screens/about_screen.dart';
 import 'package:catalyst/screens/challenges_screen.dart';
@@ -147,13 +148,18 @@ void main() {
 
   testWidgets('Zakat: the nisab from the silver price, what is due, and logging it', (tester) async {
     await _tall(tester);
+    // No live prices (offline): the prices are typed.
+    metalPrices = (_) async => null;
+    addTearDown(() => metalPrices = fetchMetalPrices);
     final app = _app(FakeMoneyDb());
     await tester.pumpWidget(host(app, const ZakatScreen()));
     await tester.pump();
+    await tester.pump();
+    expect(find.text("Couldn't fetch them right now — type the prices below."), findsOneWidget);
     expect(find.text('Add the price above to check it against the nisab.'), findsOneWidget);
     expect(find.text('52.5 bhori of silver'), findsOneWidget);
 
-    final silverPrice = find.descendant(of: find.widgetWithText(FieldBlock, "TODAY'S PRICE PER BHORI").last, matching: find.byType(TextField));
+    final silverPrice = find.descendant(of: find.widgetWithText(FieldBlock, 'PRICE PER BHORI').last, matching: find.byType(TextField));
     await tester.enterText(silverPrice, '2000');
     await tester.pump();
     expect(app.zakat.silverPrice, 2000);
@@ -161,6 +167,8 @@ void main() {
     expect(find.text('৳3,750'), findsOneWidget); // 2.5% of the wallets' ৳1,50,000
     expect(find.text("At or above the nisab — due once you've held it for a lunar year."), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Log it as paid'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Log it as paid'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add').last);

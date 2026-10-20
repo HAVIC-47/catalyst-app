@@ -1,7 +1,7 @@
-// Account actions: changing the password (straight with Supabase) and deleting
-// the account, which goes through the web app's server — it needs the
-// service-role key, which only the server has (POST /api/account/delete with the
-// user's own login token).
+// Account actions: changing the password (straight with Supabase), erasing the
+// data and deleting the account, which go through the web app's server (POST
+// /api/account/erase and /api/account/delete with the user's own login token —
+// deleting needs the service-role key, which only the server has).
 import 'dart:async';
 import 'dart:convert';
 
@@ -10,6 +10,38 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
 import '../util/i18n.dart';
+
+/// Erases everything the signed-in account has recorded — entries, moods,
+/// wallets, bills, boards, journal… — but keeps the account (login and
+/// settings). Throws with a message the screen can show.
+Future<void> eraseData() async {
+  final auth = Supabase.instance.client.auth;
+  var session = auth.currentSession;
+  if (session != null && session.isExpired) session = (await auth.refreshSession()).session;
+  if (session == null) throw Exception(tr('Log in again to erase your data.'));
+  http.Response res;
+  try {
+    res = await http
+        .post(
+          Uri.parse('$apiBaseUrl/api/account/erase'),
+          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ${session.accessToken}'},
+          body: jsonEncode({'confirm': 'ERASE'}),
+        )
+        .timeout(const Duration(seconds: 60));
+  } on TimeoutException {
+    throw Exception(tr('The server took too long — try again.'));
+  } catch (_) {
+    throw Exception(tr('No connection — try again.'));
+  }
+  if (res.statusCode != 200) {
+    Object? data;
+    try {
+      data = jsonDecode(res.body);
+    } catch (_) {}
+    final msg = data is Map ? data['error'] : null;
+    throw Exception(msg is String && msg.isNotEmpty ? msg : tr("Couldn't erase your data — try again."));
+  }
+}
 
 /// Deletes the signed-in account and everything in it. Throws with a message
 /// the screen can show.

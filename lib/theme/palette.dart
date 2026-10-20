@@ -23,6 +23,9 @@ class Palette extends ThemeExtension<Palette> {
     required this.yrMood,
     required this.yrFloor,
     required this.yrSpan,
+    required this.violet,
+    required this.violetText,
+    required this.moods,
   });
 
   final bool dark;
@@ -31,27 +34,34 @@ class Palette extends ThemeExtension<Palette> {
   final Color tintSpend, tintIncome;
   final double tintK, tintMoodK, tintTextMix;
   final double yrMood, yrFloor, yrSpan;
+  final Color violet, violetText; // the mood line and its labels
+  final List<Color> moods; // awful → great
 
-  /// Fresh newsprint: warm-white paper, white cards, near-black ink, terracotta.
+  /// Vivid and airy: lavender-white paper, white cards, deep indigo ink, a vivid
+  /// coral accent, saturated data tones — text 4.5:1, icons and marks 3:1.
   static const light = Palette(
     dark: false,
-    paper: Color(0xFFF6F5F1),
+    paper: Color(0xFFF8F7FC),
     panel: Color(0xFFFFFFFF),
     card: Color(0xFFFFFFFF),
-    ink: Color(0xFF181512),
-    accent: Color(0xFFB2462C),
-    line: Color(0x1A181512),
-    income: Color(0xFF1F7049),
-    expense: Color(0xFFB93A30),
-    saving: Color(0xFF2C6CA6),
-    tintSpend: Color(0xFFCB453B),
-    tintIncome: Color(0xFF3D80BC),
-    tintK: 0.6,
-    tintMoodK: 0.75,
-    tintTextMix: 0.62,
+    ink: Color(0xFF11101F),
+    accent: Color(0xFFD4381C),
+    line: Color(0x1A11101F),
+    income: Color(0xFF047857),
+    expense: Color(0xFFDC2626),
+    saving: Color(0xFF2563EB),
+    tintSpend: Color(0xFFF43F5E),
+    tintIncome: Color(0xFF3B82F6),
+    tintK: 0.75,
+    tintMoodK: 0.9,
+    tintTextMix: 0.74,
     yrMood: 0.55,
     yrFloor: 0.35,
     yrSpan: 0.45,
+    violet: Color(0xFF7C3AED),
+    violetText: Color(0xFF6D28D9),
+    // rose, orange, amber, lime, emerald
+    moods: [Color(0xFFE11D48), Color(0xFFEA580C), Color(0xFFD97706), Color(0xFF65A30D), Color(0xFF059669)],
   );
 
   /// True black, near-white ink, bright clay accent.
@@ -74,9 +84,24 @@ class Palette extends ThemeExtension<Palette> {
     yrMood: 0.7,
     yrFloor: 0.42,
     yrSpan: 0.45,
+    violet: Color(0xFF7A4E86),
+    violetText: Color(0xFF9268A0),
+    // brick, burnt orange, ochre, olive, forest
+    moods: [Color(0xFFA8322A), Color(0xFFC06A33), Color(0xFFB59A3C), Color(0xFF6E8C46), Color(0xFF2E8159)],
   );
 
   static Palette of(BuildContext context) => Theme.of(context).extension<Palette>()!;
+
+  /// A mood's color (1 = awful … 5 = great) in this theme.
+  Color mood(int value) => moods[(value < 1 ? 1 : (value > 5 ? 5 : value)) - 1];
+
+  /// A stored color (a category's, a tag's) the way this theme wants it: more
+  /// saturated on light paper so it pops, unchanged on black (the web's vivid()).
+  Color vivid(Color c) {
+    if (dark) return c;
+    final h = HSLColor.fromColor(c);
+    return h.withSaturation((h.saturation * 1.35).clamp(0.0, 1.0)).withLightness((h.lightness * 0.97).clamp(0.0, 1.0)).toColor();
+  }
 
   /// Muted text at the web's ink alpha (`text-ink/45` -> muted(0.45)). On light
   /// paper the faint steps are lifted exactly like the web so text clears AA.
@@ -94,8 +119,8 @@ class Palette extends ThemeExtension<Palette> {
   /// pulled toward ink on white, unchanged on black.
   Color tintText(Color c) => Color.lerp(ink, c, tintTextMix)!;
 
-  /// Text color on the solid accent (entry buttons).
-  Color get onAccent => const Color(0xFFF7F2E7);
+  /// Text color on the solid accent (entry buttons): white on the vivid coral (4.8:1).
+  Color get onAccent => dark ? const Color(0xFFF7F2E7) : const Color(0xFFFFFFFF);
 
   static double _lift(double a) {
     const steps = [

@@ -1,8 +1,8 @@
 // Dashboard — port of the web's /app/dashboard: this-month KPI tiles, the
 // mood × money trend (owns the single period selector), wallet balances, net
 // worth over time, the streak and challenges, the AI monthly recap and insights,
-// and six charts. Sections hidden in Settings (shared with the web via user
-// metadata) are not rendered.
+// and six charts — in the order chosen in Settings, where sections can also be
+// hidden (both shared with the web via user metadata).
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -55,23 +55,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : (monthMoods.fold<int>(0, (s, m) => s + m.mood) / monthMoods.length * 10).round() / 10;
 
     final window = rangeWindow(_range, _offset);
-    final charts = <(String, String, String, Widget)>[
-      ('spent', tr('Spent'), tr('by category'), CategoryDonut(transactions: app.transactions, categories: app.categories, kind: Kind.expense, window: window)),
-      ('earned', tr('Earned'), tr('by category'), CategoryDonut(transactions: app.transactions, categories: app.categories, kind: Kind.income, window: window)),
-      ('mood', tr('Mood'), tr('distribution'), MoodDonut(moods: app.moods, window: window)),
-      ('savings', tr('Savings'), tr('added vs broken'), SavingsDonut(transactions: app.transactions, window: window, vaultMode: app.vaultMode)),
-      ('moodTags', tr('Mood was about'), tr('frequency'), MoodTagBars(moods: app.moods, window: window)),
-      ('categories', tr('Category'), tr('frequency'), CategoryBars(transactions: app.transactions, categories: app.categories, window: window)),
-    ].where((c) => show(c.$1)).toList();
-    final nothing = hidden != null &&
-        !show('kpis') &&
-        !show('trend') &&
-        !show('insights') &&
-        !show('recap') &&
-        !show('wallets') &&
-        !show('netWorth') &&
-        !show('habits') &&
-        charts.isEmpty;
+    final charts = <String, (String, String, Widget)>{
+      'spent': (tr('Spent'), tr('by category'), CategoryDonut(transactions: app.transactions, categories: app.categories, kind: Kind.expense, window: window)),
+      'earned': (tr('Earned'), tr('by category'), CategoryDonut(transactions: app.transactions, categories: app.categories, kind: Kind.income, window: window)),
+      'mood': (tr('Mood'), tr('distribution'), MoodDonut(moods: app.moods, window: window)),
+      'savings': (tr('Savings'), tr('added vs broken'), SavingsDonut(transactions: app.transactions, window: window, vaultMode: app.vaultMode)),
+      'moodTags': (tr('Mood was about'), tr('frequency'), MoodTagBars(moods: app.moods, window: window)),
+      'categories': (tr('Category'), tr('frequency'), CategoryBars(transactions: app.transactions, categories: app.categories, window: window)),
+    };
+    // Sections in the order chosen in Settings → Dashboard.
+    final order = app.dashboardOrder;
+    final firstChart = order.where((id) => charts.containsKey(id) && show(id)).firstOrNull;
+    final nothing = hidden != null && order.every((id) => !show(id));
     // The recap opens on last month during the first week of a month.
     final recapOffset = now.day <= 7 ? -1 : 0;
 
@@ -79,6 +74,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // whole trend card share the first screen (same budget as the web).
     final screenH = MediaQuery.of(context).size.height - MediaQuery.of(context).padding.vertical;
     final plotH = (screenH - 470).clamp(150.0, 288.0);
+
+    Widget? section(String id) => switch (id) {
+          'kpis' => Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _KpiGrid(tiles: [
+                _Kpi(tr('Spent'), formatCurrency(spent), LucideIcons.arrowUpRight, p.expense),
+                _Kpi(tr('Earned'), formatCurrency(earned), LucideIcons.arrowDownLeft, p.income),
+                _Kpi(tr('Saved'), formatCurrency(saved), LucideIcons.wallet, saved >= 0 ? p.saving : p.expense,
+                    sub: tr('{savedRate}% rate', {'savedRate': savedRate})),
+                _Kpi(tr('Avg mood'), avgMood > 0 ? digits('$avgMood / 5') : '—', LucideIcons.smile, p.violet),
+              ]),
+            ),
+          'trend' => CardBox(
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(12),
+              child: TrendCard(
+                transactions: app.transactions,
+                moods: app.moods,
+                range: _range,
+                offset: _offset,
+                plotHeight: plotH,
+                onRange: (r) => setState(() => _range = r),
+                onOffset: (o) => setState(() => _offset = o),
+              ),
+            ),
+          'wallets' => _WalletStrip(onTap: widget.onWallets),
+          'netWorth' => NetWorthCard(onTap: widget.onWallets),
+          'habits' => HabitsStrip(onTap: widget.onChallenges),
+          // The month (or year) in one AI read, with what to do differently next time.
+          'recap' => AiInsightsCard(
+              topics: const [InsightTopic.recap],
+              periods: const [Range.month, Range.year],
+              defaultPeriod: Range.month,
+              defaultOffset: recapOffset,
+            ),
+          // AI read of mood, money and savings — its own period selector (week / month / year).
+          'insights' => const AiInsightsCard(topics: [InsightTopic.mood, InsightTopic.ledger, InsightTopic.savings]),
+          _ => switch (charts[id]) {
+              (final title, final sub, final chart) => CardBox(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [CardTitle(title, sub), const SizedBox(height: 8), chart],
+                  ),
+                ),
+              null => null,
+            },
+        };
 
     return RefreshIndicator(
       onRefresh: app.load,
@@ -110,70 +153,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 14),
           if (hidden != null) ...[
-            if (show('kpis')) ...[
-              _KpiGrid(tiles: [
-                _Kpi(tr('Spent'), formatCurrency(spent), LucideIcons.arrowUpRight, const Color(0xFFCB453B)),
-                _Kpi(tr('Earned'), formatCurrency(earned), LucideIcons.arrowDownLeft, const Color(0xFF2E8159)),
-                _Kpi(tr('Saved'), formatCurrency(saved), LucideIcons.wallet, saved >= 0 ? const Color(0xFF3D80BC) : const Color(0xFFCB453B),
-                    sub: tr('{savedRate}% rate', {'savedRate': savedRate})),
-                _Kpi(tr('Avg mood'), avgMood > 0 ? digits('$avgMood / 5') : '—', LucideIcons.smile, const Color(0xFF7A4E86)),
-              ]),
-              const SizedBox(height: 14),
-            ],
-            if (show('trend'))
-              CardBox(
-                margin: const EdgeInsets.only(bottom: 14),
-                padding: const EdgeInsets.all(12),
-                child: TrendCard(
-                  transactions: app.transactions,
-                  moods: app.moods,
-                  range: _range,
-                  offset: _offset,
-                  plotHeight: plotH,
-                  onRange: (r) => setState(() => _range = r),
-                  onOffset: (o) => setState(() => _offset = o),
-                ),
-              )
-            else if (charts.isNotEmpty)
-              // Trend hidden: the period selector still needs a home.
-              CardBox(
-                margin: const EdgeInsets.only(bottom: 14),
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Label(tr('Period · {label}', {'label': window.label})),
-                    const SizedBox(height: 8),
-                    RangeControls(
-                      range: _range,
-                      offset: _offset,
-                      onRange: (r) => setState(() => _range = r),
-                      onOffset: (o) => setState(() => _offset = o),
+            for (final id in order)
+              if (show(id)) ...[
+                // Trend hidden: the period selector still needs a home — above the first chart.
+                if (id == firstChart && !show('trend'))
+                  CardBox(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Label(tr('Period · {label}', {'label': window.label})),
+                        const SizedBox(height: 8),
+                        RangeControls(
+                          range: _range,
+                          offset: _offset,
+                          onRange: (r) => setState(() => _range = r),
+                          onOffset: (o) => setState(() => _offset = o),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            if (show('wallets')) _WalletStrip(onTap: widget.onWallets),
-            if (show('netWorth')) NetWorthCard(onTap: widget.onWallets),
-            if (show('habits')) HabitsStrip(onTap: widget.onChallenges),
-            // The month (or year) in one AI read, with what to do differently next time.
-            if (show('recap'))
-              AiInsightsCard(
-                topics: const [InsightTopic.recap],
-                periods: const [Range.month, Range.year],
-                defaultPeriod: Range.month,
-                defaultOffset: recapOffset,
-              ),
-            // AI read of mood, money and savings — its own period selector (week / month / year).
-            if (show('insights')) const AiInsightsCard(topics: [InsightTopic.mood, InsightTopic.ledger, InsightTopic.savings]),
-            for (final c in charts)
-              CardBox(
-                margin: const EdgeInsets.only(bottom: 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [CardTitle(c.$2, c.$3), const SizedBox(height: 8), c.$4],
-                ),
-              ),
+                  ),
+                ?section(id),
+              ],
             if (nothing)
               EmptyCard(
                 tr('Every dashboard section is hidden — your data is all still there.'),

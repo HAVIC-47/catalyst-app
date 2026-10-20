@@ -161,7 +161,10 @@ class _LedgerScreenState extends State<LedgerScreen> {
       if (_category.isNotEmpty) _category,
     }.toList()
       ..sort();
-    final colorOf = {for (final c in app.categories) c.name: hexColor(c.color)};
+    // Each entry's category for its badge: by id, else by name (older entries).
+    final byId = {for (final c in app.categories) c.id: c};
+    final byName = {for (final c in app.categories) c.name: c};
+    Category? catOf(Txn t) => byId[t.categoryId] ?? byName[t.categoryName];
 
     return RefreshIndicator(
       onRefresh: app.load,
@@ -343,7 +346,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
             EmptyCard(tr('No transactions yet. Tap + Add or a calendar day.'))
           else if (!app.loading && filtered.isEmpty)
             EmptyCard(tr('Nothing matches.'), action: TextButton(onPressed: _clearAll, child: Text(tr('Clear search & filters'), style: TextStyle(color: p.accent)))),
-          for (final day in days) _DayGroup(day: day, items: groups[day]!, colorOf: colorOf, walletOf: walletOf),
+          for (final day in days) _DayGroup(day: day, items: groups[day]!, catOf: catOf, walletOf: walletOf),
         ],
       ),
     );
@@ -351,12 +354,17 @@ class _LedgerScreenState extends State<LedgerScreen> {
 }
 
 class _DayGroup extends StatelessWidget {
-  const _DayGroup({required this.day, required this.items, required this.colorOf, required this.walletOf});
+  const _DayGroup({required this.day, required this.items, required this.catOf, required this.walletOf});
 
   final String day;
   final List<Txn> items;
-  final Map<String, Color> colorOf;
+  final Category? Function(Txn) catOf;
   final Wallet? Function(Txn) walletOf;
+
+  Widget _badge(Txn t) {
+    final cat = catOf(t);
+    return CategoryBadge(name: t.categoryName, icon: cat?.icon, color: cat != null ? hexColor(cat.color) : const Color(0xFF7A746A));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -395,7 +403,7 @@ class _DayGroup extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
               child: Row(
                 children: [
-                  CategoryBadge(name: tr(t.categoryName), color: colorOf[t.categoryName] ?? const Color(0xFF7A746A)),
+                  _badge(t),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(

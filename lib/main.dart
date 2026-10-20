@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config.dart';
 import 'data/app_state.dart';
+import 'data/remember.dart';
 import 'data/secure_session_storage.dart';
 import 'screens/auth_screen.dart';
 import 'screens/shell.dart';
@@ -30,6 +31,8 @@ Future<void> main() async {
       publishableKey: supabaseAnonKey,
       authOptions: FlutterAuthClientOptions(localStorage: SecureSessionStorage(supabaseUrl)),
     );
+    // "Remember me" was off and the app has been closed a while: log in again.
+    await RememberMe.forgetIfExpired();
   }
   final theme = await ThemeController.load();
   // The language chosen last on this phone, until the account's loads.

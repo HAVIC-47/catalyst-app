@@ -25,13 +25,14 @@ Color hexColor(String hex) {
 }
 
 class Category {
-  const Category({required this.id, required this.name, required this.kind, required this.color, required this.sort});
+  const Category({required this.id, required this.name, required this.kind, required this.color, required this.sort, this.icon});
 
   final String id;
   final String name;
   final Kind kind;
   final String color;
   final int sort;
+  final String? icon; // a name from util/category_icons.dart; null = picked from the name
 
   factory Category.fromRow(Map<String, dynamic> r) => Category(
         id: r['id'] as String,
@@ -39,10 +40,18 @@ class Category {
         kind: kindFrom(r['kind'] as String?),
         color: (r['color'] as String?) ?? '#7A746A',
         sort: (r['sort'] as num?)?.toInt() ?? 0,
+        icon: r['icon'] as String?,
       );
 
-  Category copyWith({String? name, String? color}) =>
-      Category(id: id, name: name ?? this.name, kind: kind, color: color ?? this.color, sort: sort);
+  /// [clearIcon]: back to the icon picked from the name.
+  Category copyWith({String? name, String? color, String? icon, bool clearIcon = false, int? sort}) => Category(
+        id: id,
+        name: name ?? this.name,
+        kind: kind,
+        color: color ?? this.color,
+        sort: sort ?? this.sort,
+        icon: clearIcon ? null : icon ?? this.icon,
+      );
 }
 
 class Txn {
@@ -886,3 +895,23 @@ const dashboardSections = [
   ('moodTags', 'Mood was about', 'Tag frequency'),
   ('categories', 'Category frequency', 'Most-used categories'),
 ];
+
+/// Every dashboard section in the order the user put them in (Settings →
+/// Dashboard; stored as ids, shared with the web). A section the stored order
+/// doesn't mention yet — one added in a later version — takes its default
+/// place, right after the section it follows by default.
+List<String> orderDashboardSections(Object? order) {
+  final ids = [for (final s in dashboardSections) s.$1];
+  final out = <String>[];
+  if (order is List) {
+    for (final x in order) {
+      if (x is String && ids.contains(x) && !out.contains(x)) out.add(x);
+    }
+  }
+  for (final (i, id) in ids.indexed) {
+    if (out.contains(id)) continue;
+    final before = ids.take(i).toList().reversed.where(out.contains).firstOrNull;
+    out.insert(before == null ? 0 : out.indexOf(before) + 1, id);
+  }
+  return out;
+}

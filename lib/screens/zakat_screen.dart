@@ -1,12 +1,14 @@
 // Zakat calculator — port of the web's /app/zakat. What you own (wallets, cash
 // elsewhere, gold, silver, money owed to you, investments) less what you owe now,
-// against the nisab; 2.5% when it's at or above it. The figures are kept in the
-// account's preferences, so the web shows the same ones (util/zakat.dart).
+// against the nisab; 2.5% when it's at or above it. Gold and silver go at today's
+// international prices (or ones you type). The figures are kept in the account's
+// preferences, so the web shows the same ones (util/zakat.dart).
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../data/app_state.dart';
+import '../data/metal_prices.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
@@ -16,20 +18,55 @@ import '../util/money.dart';
 import '../util/zakat.dart';
 import '../widgets/ui.dart';
 
-class ZakatScreen extends StatelessWidget {
+class ZakatScreen extends StatefulWidget {
   const ZakatScreen({super.key});
+
+  @override
+  State<ZakatScreen> createState() => _ZakatScreenState();
+}
+
+enum _Live { loading, ok, failed }
+
+class _ZakatScreenState extends State<ZakatScreen> {
+  // Today's international prices, in the account's currency.
+  MetalPrices? _live;
+  _Live _liveState = _Live.loading;
+  String? _for;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final currency = Provider.of<AppState>(context).currency;
+    if (currency != _for) _fetch(currency);
+  }
+
+  Future<void> _fetch(String currency) async {
+    _for = currency;
+    _liveState = _Live.loading;
+    final m = await metalPrices(currency);
+    if (!mounted || _for != currency) return;
+    setState(() {
+      _live = m;
+      _liveState = m == null ? _Live.failed : _Live.ok;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final app = context.watch<AppState>();
     final z = app.zakat;
+    // Typed prices when live ones are off, or can't be had right now.
+    final auto = z.autoPrices && _liveState != _Live.failed;
+    final zz = auto ? z : z.copyWith(autoPrices: false);
+    final live = _live?.prices;
+    final prices = pricesOf(zz, live);
     final balances = walletBalances(app.wallets, app.transactions, app.transfers, app.debts, app.debtPayments);
     final open = app.debts.where((d) => debtIsOpen(d, app.debtPayments)).toList();
     final wallets = app.walletsReady ? balances.values.fold<double>(0, (s, b) => s + b) : 0.0;
     final owedToYou = open.where((d) => d.lent).fold<double>(0, (s, d) => s + debtRemaining(d, app.debtPayments));
     final youOwe = open.where((d) => !d.lent).fold<double>(0, (s, d) => s + debtRemaining(d, app.debtPayments));
-    final r = zakatOf(z, wallets: wallets, owedToYou: owedToYou, youOwe: youOwe);
+    final r = zakatOf(zz, wallets: wallets, owedToYou: owedToYou, youOwe: youOwe, live: live);
     final unit = z.unit == 'g' ? tr('g') : tr('bhori');
     final weight = nisabWeight(z.basis, z.unit);
     void set(ZakatInputs next) => app.setZakat(next);
@@ -62,7 +99,10 @@ class ZakatScreen extends StatelessWidget {
     }
 
     return RefreshIndicator(
-      onRefresh: app.load,
+      onRefresh: () async {
+        await app.load();
+        if (_liveState == _Live.failed && _for != null) await _fetch(_for!);
+      },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -94,7 +134,7 @@ class ZakatScreen extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     r.nisab == 0
-                        ? tr('Add the price above to check it against the nisab.')
+                        ? (auto ? tr("Fetching today's prices…") : tr('Add the price above to check it against the nisab.'))
                         : r.above
                             ? tr("At or above the nisab — due once you've held it for a lunar year.")
                             : tr('Below the nisab — no zakat is due.'),
@@ -133,7 +173,14 @@ class ZakatScreen extends StatelessWidget {
               ),
               if (r.nisab == 0) ...[
                 const SizedBox(height: 4),
-                Text(z.basis == 'silver' ? tr("Add today's silver price to see it.") : tr("Add today's gold price to see it."), style: bodyStyle(p, 12, color: p.accent)),
+                Text(
+                  auto
+                      ? tr("Fetching today's prices…")
+                      : z.basis == 'silver'
+                          ? tr("Add today's silver price to see it.")
+                          : tr("Add today's gold price to see it."),
+                  style: bodyStyle(p, 12, color: p.accent),
+                ),
               ],
               const SizedBox(height: 6),
               Text(tr('Silver gives the lower nisab, so more people pay; many scholars advise it.'), style: bodyStyle(p, 11.5, color: p.muted(0.4), height: 1.4)),
@@ -179,10 +226,38 @@ class ZakatScreen extends StatelessWidget {
                 ),
               ]),
               const SizedBox(height: 12),
+              _Check(
+                on: z.autoPrices,
+                label: tr("Today's international prices"),
+                hint: !z.autoPrices
+                    ? tr('Off — you type the prices below.')
+                    : switch (_liveState) {
+                        _Live.loading => tr("Fetching today's prices…"),
+                        _Live.failed => tr("Couldn't fetch them right now — type the prices below."),
+                        _Live.ok => tr('Gold (24K) and silver, updated {time}.', {
+                            'time': _live?.updatedAt != null ? fmt(_live!.updatedAt!, 'MMM d, h:mm a') : '—',
+                          }),
+                      },
+                onChanged: (v) => set(z.copyWith(autoPrices: v)),
+              ),
+              const SizedBox(height: 6),
               for (final gold in [true, false]) ...[
-                Text(gold ? tr('Gold') : tr('Silver'), style: bodyStyle(p, 14, weight: FontWeight.w600, color: p.muted(0.8))),
-                const SizedBox(height: 8),
                 Row(children: [
+                  Expanded(child: Text(gold ? tr('Gold') : tr('Silver'), style: bodyStyle(p, 14, weight: FontWeight.w600, color: p.muted(0.8)))),
+                  if (gold)
+                    Semantics(
+                      label: tr('Purity'),
+                      child: SegTabs<int>(
+                        options: karats,
+                        value: z.karat,
+                        compact: true,
+                        label: (k) => tr('{k}K', {'k': digits('$k')}),
+                        onChanged: (k) => set(z.copyWith(karat: k)),
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: 8),
+                Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   Expanded(
                     child: _Number(
                       label: tr('You own ({unit})', {'unit': unit}),
@@ -192,17 +267,25 @@ class ZakatScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _Number(
-                      label: tr("Today's price per {unit}", {'unit': unit}),
-                      value: gold ? z.goldPrice : z.silverPrice,
-                      money: true,
-                      onChanged: (n) => set(gold ? z.copyWith(goldPrice: n) : z.copyWith(silverPrice: n)),
-                    ),
+                    child: auto
+                        ? _LivePrice(
+                            label: gold ? tr('Price per {unit} (24K)', {'unit': unit}) : tr('Price per {unit}', {'unit': unit}),
+                            value: _liveState == _Live.ok ? (gold ? prices.gold : prices.silver) : null,
+                          )
+                        : _Number(
+                            label: gold ? tr('Price per {unit} (24K)', {'unit': unit}) : tr('Price per {unit}', {'unit': unit}),
+                            value: gold ? z.goldPrice : z.silverPrice,
+                            money: true,
+                            onChanged: (n) => set(gold ? z.copyWith(goldPrice: n) : z.copyWith(silverPrice: n)),
+                          ),
                   ),
                 ]),
                 const SizedBox(height: 14),
               ],
-              Text(tr("Use today's selling price — in Bangladesh, BAJUS publishes it. 1 bhori = 11.664 g."), style: bodyStyle(p, 11.5, color: p.muted(0.4), height: 1.4)),
+              Text(
+                tr('International spot prices, without making charges or VAT. Jewellery counts only for its gold: a 22K piece is 22/24 gold. 1 bhori = 11.664 g.'),
+                style: bodyStyle(p, 11.5, color: p.muted(0.4), height: 1.4),
+              ),
             ]),
           ),
         ],
@@ -275,6 +358,43 @@ class _Check extends StatelessWidget {
   }
 }
 
+/// Today's price, read-only, with a "Live" tag (… while it loads).
+class _LivePrice extends StatelessWidget {
+  const _LivePrice({required this.label, required this.value});
+
+  final String label;
+  final double? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return FieldBlock(
+      label: label,
+      labelLines: 2,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line)),
+        child: Row(children: [
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value != null ? formatCurrency(value!) : '…', style: monoStyle(p, 14, color: p.muted(0.8))),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(color: p.income.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+            child: Text(tr('Live'), style: monoStyle(p, 9.5, weight: FontWeight.w600, color: p.income, letterSpacing: isBangla ? 0 : 0.8)),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
 /// An amount field (in the account's currency) that reports a number as it's typed.
 class _Money extends StatelessWidget {
   const _Money({required this.label, required this.value, required this.onChanged});
@@ -341,6 +461,7 @@ class _NumberState extends State<_Number> {
 
     return FieldBlock(
       label: widget.label,
+      labelLines: 2,
       child: widget.money
           ? _MoneyInput(controller: _c, onChanged: changed)
           : TextField(

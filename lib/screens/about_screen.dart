@@ -204,7 +204,7 @@ class UpdateDialog extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     Navigator.pop(context);
     if (!await Updates.download(update)) {
-      messenger.showSnackBar(SnackBar(content: Text(tr("Couldn't open the download — get it from {url}", {'url': latestApkUrl}))));
+      messenger.showSnackBar(SnackBar(content: Text(tr("Couldn't open the download — get it from {url}", {'url': latestReleaseUrl}))));
     }
   }
 

@@ -33,7 +33,7 @@ Color _dayColor(_Cell? d, double maxFlow, Palette p) {
   var c = p.card;
   final mood = d.mood;
   c = Color.alphaBlend(
-    (mood != null ? moodPreset(mood).color : const Color(0xFF7A746A)).withValues(alpha: (mood != null ? 0.2 : 0.05) * p.tintMoodK),
+    (mood != null ? p.mood(moodPreset(mood).value) : const Color(0xFF7A746A)).withValues(alpha: (mood != null ? 0.2 : 0.05) * p.tintMoodK),
     c,
   );
   final spendA = maxFlow > 0 ? math.min(0.42, d.expense / maxFlow * 0.48) : 0.0;
@@ -47,7 +47,7 @@ Color _dayColor(_Cell? d, double maxFlow, Palette p) {
 Color _yearColor(_Cell? d, double maxFlow, Palette p) {
   if (d == null || (d.income + d.expense == 0 && d.mood == null)) return p.inkA(0.04);
   var c = p.card;
-  if (d.mood != null) c = Color.alphaBlend(moodPreset(d.mood!).color.withValues(alpha: p.yrMood), c);
+  if (d.mood != null) c = Color.alphaBlend(p.mood(moodPreset(d.mood!).value).withValues(alpha: p.yrMood), c);
   final spendHeavier = d.expense >= d.income;
   final flow = spendHeavier ? d.expense : d.income;
   if (flow > 0) {
@@ -274,7 +274,7 @@ class _Legend extends StatelessWidget {
           height: 10,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
-            gradient: const LinearGradient(colors: [Color(0xFFA8322A), Color(0xFFB59A3C), Color(0xFF2E8159)]),
+            gradient: LinearGradient(colors: [p.mood(1), p.mood(3), p.mood(5)]),
           ),
         ),
         const SizedBox(width: 16),

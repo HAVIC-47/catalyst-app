@@ -870,7 +870,7 @@ class PriorityIcon extends StatelessWidget {
     final p = Palette.of(context);
     final (icon, color) = switch (priority) {
       TicketPriority.high => (LucideIcons.chevronsUp, p.expense),
-      TicketPriority.medium => (LucideIcons.equal, const Color(0xFFB59A3C)),
+      TicketPriority.medium => (LucideIcons.equal, p.mood(3)),
       TicketPriority.low => (LucideIcons.chevronsDown, p.saving),
     };
     final name = '${priority.name[0].toUpperCase()}${priority.name.substring(1)}';

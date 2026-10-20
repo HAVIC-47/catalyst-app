@@ -19,8 +19,9 @@ import 'money_db.dart';
 import 'offline.dart';
 import 'repo.dart';
 
-// Key for the hidden dashboard sections, both locally and in user metadata.
+// Keys for the hidden dashboard sections and their order, both locally and in user metadata.
 const _dashboardHiddenKey = 'dashboardHidden';
+const _dashboardOrderKey = 'dashboardOrder';
 final _sectionIds = {for (final s in dashboardSections) s.$1};
 
 /// Categories in the database's order: by kind, then their sort number, then
@@ -223,6 +224,11 @@ class AppState extends ChangeNotifier {
   bool _dashboardTouched = false;
   Future<void> _dashboardSave = Future.value();
 
+  /// Every dashboard section in the order chosen in Settings (the ones you care
+  /// about most at the top).
+  List<String> dashboardOrder = orderDashboardSections(null);
+  bool _orderTouched = false;
+
   /// Load everything once per signed-in session.
   Future<void> ensureLoaded() async {
     if (_started) return;
@@ -263,6 +269,7 @@ class AppState extends ChangeNotifier {
     }
     if (dashboardHidden == null) {
       dashboardHidden = _parseHidden(_decode(prefs.getString(_dashboardHiddenKey))) ?? [];
+      if (!_orderTouched) dashboardOrder = orderDashboardSections(_decode(prefs.getString(_dashboardOrderKey)));
       notifyListeners();
       unawaited(_loadRemotePrefs(prefs));
     }
@@ -485,6 +492,27 @@ class AppState extends ChangeNotifier {
     await Supabase.instance.client.auth.signOut();
   }
 
+  /// After "Erase my data" (the server has deleted every entry): the phone's
+  /// copies go too — the saved copy, changes waiting to be sent, the zakat
+  /// figures, the notes about alerts already shown — then a fresh load, which
+  /// sets up the default categories and wallets again.
+  Future<void> afterErase() async {
+    final uid = _uid;
+    await Outbox.instance.clear();
+    if (uid != null) await OfflineCopy.clear(uid);
+    final prefs = await SharedPreferences.getInstance();
+    final notes = RegExp('^(zakat|challenge-notified|streak-celebrated|mood-spend:|budget-alerts:|board:)');
+    for (final k in prefs.getKeys().toList()) {
+      if (notes.hasMatch(k)) await prefs.remove(k);
+    }
+    selectedBoards.clear();
+    _zakatSave?.cancel();
+    zakat = const ZakatInputs();
+    _prefsTouched.add('zakat');
+    await Repo.savePrefs({'zakat': null}).catchError((Object e) => debugPrint('[catalyst] could not clear the zakat figures: $e'));
+    await load();
+  }
+
   /// Wallets need the newer database update; until it's run they're simply off.
   Future<(bool, List<Wallet>)> _loadWallets() async {
     try {
@@ -528,6 +556,8 @@ class AppState extends ChangeNotifier {
     selectedBoards.clear();
     dashboardHidden = null;
     _dashboardTouched = false;
+    dashboardOrder = orderDashboardSections(null);
+    _orderTouched = false;
     notifyListeners();
   }
 
@@ -563,6 +593,10 @@ class AppState extends ChangeNotifier {
         dashboardHidden = remote;
         prefs.setString(_dashboardHiddenKey, jsonEncode(remote));
       }
+      if (!_orderTouched && meta[_dashboardOrderKey] is List) {
+        dashboardOrder = orderDashboardSections(meta[_dashboardOrderKey]);
+        prefs.setString(_dashboardOrderKey, jsonEncode(dashboardOrder));
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('[catalyst] could not load preferences: $e');
@@ -577,6 +611,17 @@ class AppState extends ChangeNotifier {
     // Chain saves so rapid toggles reach the server in order (last write wins).
     _dashboardSave = _dashboardSave
         .then((_) => Repo.savePrefs({_dashboardHiddenKey: ids}))
+        .catchError((Object e) => debugPrint('[catalyst] could not save preferences: $e'));
+  }
+
+  void setDashboardOrder(List<String> ids) {
+    _orderTouched = true;
+    final order = orderDashboardSections(ids);
+    dashboardOrder = order;
+    notifyListeners();
+    SharedPreferences.getInstance().then((p) => p.setString(_dashboardOrderKey, jsonEncode(order)));
+    _dashboardSave = _dashboardSave
+        .then((_) => Repo.savePrefs({_dashboardOrderKey: order}))
         .catchError((Object e) => debugPrint('[catalyst] could not save preferences: $e'));
   }
 
@@ -739,17 +784,38 @@ class AppState extends ChangeNotifier {
       moods.where((m) => m.loggedOn == key).toList()..sort((a, b) => a.loggedAt.compareTo(b.loggedAt));
 
   // ---- categories
-  Future<Category> createCategory({required String name, required Kind kind, required String color, required int sort}) async {
-    final x = await Repo.addCategory(name: name, kind: kind, color: color, sort: sort);
+  Future<Category> createCategory({required String name, required Kind kind, required String color, required int sort, String? icon}) async {
+    final x = await Repo.addCategory(name: name, kind: kind, color: color, sort: sort, icon: icon);
     categories = orderCategories([...categories, x]);
     notifyListeners();
     return x;
   }
 
-  Future<void> editCategory(String id, {String? name, String? color}) async {
-    await Repo.updateCategory(id, name: name, color: color);
-    categories = [for (final c in categories) c.id == id ? c.copyWith(name: name, color: color) : c];
+  /// [clearIcon]: back to the icon picked from the name.
+  Future<void> editCategory(String id, {String? name, String? color, String? icon, bool clearIcon = false}) async {
+    await Repo.updateCategory(id, name: name, color: color, icon: icon, clearIcon: clearIcon);
+    categories = [
+      for (final c in categories) c.id == id ? c.copyWith(name: name, color: color, icon: icon, clearIcon: clearIcon) : c,
+    ];
     notifyListeners();
+  }
+
+  /// One kind's categories in a new order ([ids], top first) — the entry screen
+  /// lists them the same way. Shown at once; put back if the database refuses.
+  Future<void> reorderCategories(List<String> ids) async {
+    final before = categories;
+    final sortOf = {for (final (i, id) in ids.indexed) id: i};
+    final changed = [for (final c in before) if (sortOf[c.id] case final s? when s != c.sort) (c.id, s)];
+    if (changed.isEmpty) return;
+    categories = orderCategories([for (final c in before) c.copyWith(sort: sortOf[c.id])]);
+    notifyListeners();
+    try {
+      await Future.wait([for (final (id, s) in changed) Repo.updateCategory(id, sort: s)]);
+    } catch (e) {
+      categories = before;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> removeCategory(String id) async {

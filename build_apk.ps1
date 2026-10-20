@@ -1,4 +1,4 @@
-# Builds the Catalyst Android app as a release APK -> dist\Catalyst.apk
+# Builds the Catalyst Android app as a release APK -> dist\catalyst_<version>.apk
 #
 #   .\build_apk.ps1            universal APK (works on every Android phone)
 #   .\build_apk.ps1 -Small     smaller APK for modern 64-bit phones (arm64) only
@@ -23,15 +23,18 @@ Write-Host "Getting packages..." -ForegroundColor Cyan
 & $flutter pub get
 if ($LASTEXITCODE -ne 0) { Write-Host "flutter pub get failed." -ForegroundColor Red; exit 1 }
 
+# The file is named after the version in pubspec.yaml: catalyst_1.6.0.apk
+$version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+
 Write-Host "Building release APK (first build downloads Gradle deps and takes a few minutes)..." -ForegroundColor Cyan
 if ($Small) {
   & $flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build\symbols --dart-define-from-file=env.json
   $apk = "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk"
-  $name = "Catalyst-arm64.apk"
+  $name = "catalyst_${version}_arm64.apk"
 } else {
   & $flutter build apk --release --obfuscate --split-debug-info=build\symbols --dart-define-from-file=env.json
   $apk = "build\app\outputs\flutter-apk\app-release.apk"
-  $name = "Catalyst.apk"
+  $name = "catalyst_$version.apk"
 }
 if ($LASTEXITCODE -ne 0) { Write-Host "Build failed - see the errors above." -ForegroundColor Red; exit 1 }
 

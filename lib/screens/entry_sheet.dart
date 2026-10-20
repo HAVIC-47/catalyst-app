@@ -451,7 +451,7 @@ class _CategoryTile extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CategoryBadge(name: tr(cat.name), color: hexColor(cat.color), size: 32),
+                  CategoryBadge(name: cat.name, icon: cat.icon, color: hexColor(cat.color), size: 32),
                   const SizedBox(height: 7),
                   Text(tr(cat.name), maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 12, color: p.muted(0.7))),
                 ],
@@ -538,10 +538,10 @@ class _MoodFormState extends State<_MoodForm> {
                       height: 80,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
-                        color: _mood == m.value ? m.color.withValues(alpha: 0.1) : Colors.transparent,
-                        border: Border.all(color: _mood == m.value ? m.color.withValues(alpha: 0.5) : p.line),
+                        color: _mood == m.value ? p.mood(m.value).withValues(alpha: 0.1) : Colors.transparent,
+                        border: Border.all(color: _mood == m.value ? p.mood(m.value).withValues(alpha: 0.5) : p.line),
                         boxShadow: _mood == m.value
-                            ? [BoxShadow(color: m.color.withValues(alpha: 0.35), blurRadius: 24, spreadRadius: -10)]
+                            ? [BoxShadow(color: p.mood(m.value).withValues(alpha: 0.35), blurRadius: 24, spreadRadius: -10)]
                             : null,
                       ),
                       child: ExcludeSemantics(
@@ -556,7 +556,7 @@ class _MoodFormState extends State<_MoodForm> {
                                 p,
                                 10.5,
                                 weight: _mood == m.value ? FontWeight.w600 : FontWeight.w500,
-                                color: _mood == m.value ? p.tintText(m.color) : p.muted(0.4),
+                                color: _mood == m.value ? p.tintText(p.mood(m.value)) : p.muted(0.4),
                               ),
                             ),
                           ],
@@ -622,7 +622,7 @@ class _MoodFormState extends State<_MoodForm> {
         ],
         if (_error != null) ...[const SizedBox(height: 16), _ErrorText(_error!)],
         const SizedBox(height: 22),
-        _TintButton(label: tr('Save mood'), color: active.color, busy: _saving, onPressed: submit),
+        _TintButton(label: tr('Save mood'), color: p.mood(active.value), busy: _saving, onPressed: submit),
       ],
     );
   }

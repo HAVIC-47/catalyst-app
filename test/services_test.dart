@@ -53,7 +53,15 @@ void main() {
       expect(u.url, endsWith('/v1.4.0/Catalyst.apk'));
       expect(Updates.parseRelease({..._release('v1.5.0'), 'prerelease': true}), isNull);
       expect(Updates.parseRelease(_release('nightly')), isNull);
-      expect(Updates.parseRelease(_release('v1.4.1', assets: const []))!.url, latestApkUrl);
+      expect(Updates.parseRelease(_release('v1.4.1', assets: const []))!.url, latestReleaseUrl);
+      // From 1.6 the files carry the version; the arm64-only one is never picked, whatever the order.
+      for (final assets in [
+        ['catalyst_1.6.0.apk', 'catalyst_1.6.0_arm64.apk'],
+        ['catalyst_1.6.0_arm64.apk', 'catalyst_1.6.0.apk'],
+      ]) {
+        expect(Updates.parseRelease(_release('v1.6.0', assets: assets))!.url, endsWith('/v1.6.0/catalyst_1.6.0.apk'));
+      }
+      expect(Updates.parseRelease(_release('v1.6.0', assets: const ['catalyst_1.6.0_arm64.apk']))!.url, endsWith('_arm64.apk'));
     });
 
     test('a newer release shows once, notifies once, and stays dismissed for that version', () async {

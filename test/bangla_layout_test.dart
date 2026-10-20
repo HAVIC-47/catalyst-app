@@ -3,8 +3,10 @@
 import 'package:catalyst/data/app_state.dart';
 import 'package:catalyst/data/features.dart';
 import 'package:catalyst/data/insights.dart';
+import 'package:catalyst/data/metal_prices.dart';
 import 'package:catalyst/models.dart';
 import 'package:catalyst/screens/about_screen.dart';
+import 'package:catalyst/screens/auth_screen.dart';
 import 'package:catalyst/screens/bills_screen.dart';
 import 'package:catalyst/screens/boards_screen.dart';
 import 'package:catalyst/screens/budgets_screen.dart';
@@ -160,11 +162,24 @@ void main() {
     Updates.readVersion = () async => '1.4.0';
     Updates.fetchLatest = () async => null;
     WhatsNew.readInstall = () async => (version: '1.4.0', updated: false);
+    metalPrices = (_) async => (prices: (gold: 15000.0, silver: 180.0), updatedAt: DateTime(2026, 10, 20, 9, 30));
   });
   tearDown(() async {
     AiInsightsCard.request = requestInsight;
+    metalPrices = fetchMetalPrices;
     await setAppLang('en');
   });
+
+  /// Scroll [scrollable] through, then expect nothing overflowed.
+  Future<void> scrolledThrough(WidgetTester tester, Finder scrollable, String what) async {
+    for (var i = 0; i < 10; i++) {
+      await tester.drag(scrollable, const Offset(0, -500), warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    final error = tester.takeException();
+    if (error is FlutterError) debugPrint('$what: ${error.toStringDeep()}');
+    expect(error, isNull, reason: what);
+  }
 
   final screens = <String, Widget Function()>{
     'calendar': () => const CalendarScreen(),
@@ -217,7 +232,7 @@ void main() {
         openSettingsPage(tester.element(find.byType(SettingsScreen)), page);
         await tester.pumpAndSettle();
         for (var i = 0; i < 8; i++) {
-          await tester.drag(find.byType(ListView).last, const Offset(0, -500), warnIfMissed: false);
+          await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -500), warnIfMissed: false);
           await tester.pump(const Duration(milliseconds: 50));
         }
         final error = tester.takeException();
@@ -226,6 +241,42 @@ void main() {
         tester.state<NavigatorState>(find.byType(Navigator)).pop();
         await tester.pumpAndSettle();
       }
+    });
+
+    testWidgets("the login screen fits a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {
+      await setAppLang(lang);
+      await _phone(tester);
+      final theme = await ThemeController.load();
+      await tester.pumpWidget(MultiProvider(
+        providers: [ChangeNotifierProvider.value(value: theme), ChangeNotifierProvider<AppState>.value(value: _app())],
+        child: MaterialApp(theme: buildTheme(Palette.light), home: const AuthScreen()),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(Checkbox), findsOneWidget);
+      await scrolledThrough(tester, find.byType(Scrollable).first, 'login');
+    });
+
+    testWidgets("the category icon picker fits a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {
+      await setAppLang(lang);
+      await _phone(tester);
+      await tester.pumpWidget(_host(_app(), const SettingsScreen()));
+      openSettingsPage(tester.element(find.byType(SettingsScreen)), SettingsPage.expenseCategories);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(CategoryBadge).at(1)); // the first category's (0 is the new one's)
+      await tester.pumpAndSettle();
+      expect(find.byTooltip(lang == 'bn' ? 'অটো — নাম দেখে' : 'Auto — from the name'), findsOneWidget);
+      await scrolledThrough(tester, find.byType(CustomScrollView).last, 'icon picker');
+    });
+
+    testWidgets("zakat without live prices fits a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {
+      await setAppLang(lang);
+      await _phone(tester);
+      metalPrices = (_) async => null;
+      await tester.pumpWidget(_host(_app(), const ZakatScreen()));
+      await tester.pump();
+      await tester.pump();
+      await scrolledThrough(tester, find.byType(Scrollable).first, 'zakat offline');
+      expect(find.text(lang == 'bn' ? 'এখন আনা গেল না — নিচে দাম লিখুন।' : "Couldn't fetch them right now — type the prices below."), findsOneWidget);
     });
 
     testWidgets("the what's-new pop-up fits a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {
