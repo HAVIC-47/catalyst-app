@@ -32,6 +32,13 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.6.1', [
+        Feature(
+          LucideIcons.download,
+          tr('Updates show up straight away'),
+          tr('The app looks for a new version every time it opens, and finds it even when GitHub is busy — so the update pop-up comes as soon as one is out.'),
+        ),
+      ]),
       Release('1.6.0', [
         Feature(LucideIcons.palette, tr('A brighter light mode'), tr('Livelier colors in light mode — moods, charts and categories pop, and the text stays easy to read.')),
         Feature(
@@ -237,7 +244,11 @@ List<FeatureGroup> appFeatures() {
         tr('Share a payment message to Catalyst (or paste it in Settings) and the app suggests the entry. It\'s read on '
             'the phone only, and nothing is saved until you add it.'),
       ),
-      Feature(LucideIcons.download, tr('Updates'), tr("The app tells you when a new version is out — Update downloads it — and shows what's new.")),
+      Feature(
+        LucideIcons.download,
+        tr('Updates'),
+        tr("The app tells you as soon as a new version is out — it looks every time it opens — and Update downloads it; afterwards it shows what's new."),
+      ),
     ]),
     FeatureGroup(tr('Your'), tr('way'), [
       Feature(LucideIcons.languages, 'বাংলা', tr('The whole app in Bangla, with Bengali dates and digits.')),

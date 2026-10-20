@@ -1166,4 +1166,7 @@ const bn = <String, String>{
   'Email and password or Google, with Remember me — and Forgot password if you lose it.': 'ইমেইল ও পাসওয়ার্ড বা Google, সঙ্গে "আমাকে মনে রাখুন" — পাসওয়ার্ড ভুলে গেলে রিসেটের ব্যবস্থাও আছে।',
   'Email and password, with Remember me — and Forgot password if you lose it.': 'ইমেইল ও পাসওয়ার্ড, সঙ্গে "আমাকে মনে রাখুন" — পাসওয়ার্ড ভুলে গেলে রিসেটের ব্যবস্থাও আছে।',
   'Deletes every entry but keeps the account — to start fresh.': 'অ্যাকাউন্ট রেখে সব এন্ট্রি মুছে দেয় — নতুন করে শুরু করতে।',
+  'Updates show up straight away': 'আপডেট আসামাত্র জানায়',
+  'The app looks for a new version every time it opens, and finds it even when GitHub is busy — so the update pop-up comes as soon as one is out.': 'অ্যাপ প্রতিবার খোলার সময় নতুন সংস্করণ খোঁজে, GitHub ব্যস্ত থাকলেও খুঁজে পায় — তাই নতুন সংস্করণ এলেই আপডেটের পপ-আপ আসে।',
+  "The app tells you as soon as a new version is out — it looks every time it opens — and Update downloads it; afterwards it shows what's new.": 'নতুন সংস্করণ এলেই অ্যাপ জানায় — প্রতিবার খোলার সময় খোঁজে — আর আপডেটে চাপ দিলে ডাউনলোড হয়; পরে দেখায় নতুন কী এল।',
 };

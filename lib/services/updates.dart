@@ -2,8 +2,8 @@
 // when the latest one is newer than this install, the app pops up (once per
 // version, again a few days after "Later") and shows a banner. "Update" opens the
 // release's APK in the browser, which downloads it — Android then offers to
-// install it over this one. A found update is remembered, so a restart between
-// checks still shows it.
+// install it over this one. Every start of the app asks GitHub, then at most every
+// half hour; a found update is remembered, so it still shows while offline.
 import 'dart:async';
 import 'dart:convert';
 
@@ -39,12 +39,23 @@ abstract final class Updates {
   static const _notifiedKey = 'update:notified';
   static const _latestKey = 'update:latest';
   static const _promptedKey = 'update:prompted';
-  static const _every = Duration(hours: 6);
+  static const _every = Duration(minutes: 30);
   static const _promptAgain = Duration(days: 3);
+
+  /// Whether this run of the app has asked GitHub yet (each start asks once).
+  static bool _askedThisRun = false;
 
   /// Fetches the latest release's JSON — tests swap in an answer.
   @visibleForTesting
-  static Future<Map<String, dynamic>?> Function() fetchLatest = _fetchLatest;
+  static Future<Map<String, dynamic>?> Function() fetchLatest = fromGitHub;
+
+  /// The HTTP client for [fromGitHub] — tests swap in a fake one.
+  @visibleForTesting
+  static http.Client Function() newClient = http.Client.new;
+
+  /// Forget that this run has asked (tests: a fresh start of the app).
+  @visibleForTesting
+  static void freshStart() => _askedThisRun = false;
 
   /// Reads this install's version — tests swap in one.
   @visibleForTesting
@@ -53,16 +64,19 @@ abstract final class Updates {
   /// This install's version (read once).
   static Future<String> version() async => current.isNotEmpty ? current : current = await readVersion();
 
-  /// Look for a newer release (at most every few hours unless [force]). Returns
-  /// the update when there is one, and calls [onNew] the first time a version is seen.
+  /// Look for a newer release: once each time the app starts, then at most every
+  /// half hour (always when [force]d). Returns the update when there is one, and
+  /// calls [onNew] the first time a version is seen.
   static Future<UpdateInfo?> check({bool force = false, void Function(UpdateInfo)? onNew}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await version();
       final last = prefs.getInt(_checkedKey) ?? 0;
-      if (!force && DateTime.now().millisecondsSinceEpoch - last < _every.inMilliseconds) return _remembered(prefs);
+      final recent = DateTime.now().millisecondsSinceEpoch - last < _every.inMilliseconds;
+      if (!force && _askedThisRun && recent) return _remembered(prefs);
       final json = await fetchLatest();
       if (json == null) return _remembered(prefs);
+      _askedThisRun = true;
       await prefs.setInt(_checkedKey, DateTime.now().millisecondsSinceEpoch);
       final info = parseRelease(json);
       if (info == null || !isNewer(info.version, current)) {
@@ -80,7 +94,11 @@ abstract final class Updates {
       return info;
     } catch (e) {
       debugPrint('[catalyst] update check failed: $e');
-      return available.value;
+      try {
+        return _remembered(await SharedPreferences.getInstance());
+      } catch (_) {
+        return available.value;
+      }
     }
   }
 
@@ -116,13 +134,59 @@ abstract final class Updates {
   /// Open the APK link in the browser (which downloads it).
   static Future<bool> download(UpdateInfo u) => launchUrl(Uri.parse(u.url), mode: LaunchMode.externalApplication);
 
-  static Future<Map<String, dynamic>?> _fetchLatest() async {
-    final res = await http
-        .get(Uri.parse('https://api.github.com/repos/$releasesRepo/releases/latest'), headers: {'Accept': 'application/vnd.github+json'})
-        .timeout(const Duration(seconds: 15));
-    if (res.statusCode != 200) return null;
-    final data = jsonDecode(res.body);
-    return data is Map<String, dynamic> ? data : null;
+  /// The latest release, shaped like GitHub's API answer (tag_name, html_url,
+  /// assets). First from the website: github.com/…/releases/latest redirects to
+  /// the latest release's page, and its APK is `catalyst_<version>.apk` (checked to
+  /// exist). The API comes second — it allows 60 requests an hour per address, and
+  /// phones behind a carrier's shared address can find them used up. Null when
+  /// neither answers.
+  static Future<Map<String, dynamic>?> fromGitHub() async {
+    final client = newClient();
+    try {
+      final site = await _fromWebsite(client);
+      if (site != null && (site['assets'] as List).isNotEmpty) return site;
+      // No APK by that name: the API lists the real ones (else the release page will do).
+      return await _fromApi(client) ?? site;
+    } finally {
+      client.close();
+    }
+  }
+
+  static Future<Map<String, dynamic>?> _fromWebsite(http.Client client) async {
+    try {
+      final req = http.Request('GET', Uri.parse('https://github.com/$releasesRepo/releases/latest'))..followRedirects = false;
+      final res = await client.send(req).timeout(const Duration(seconds: 15));
+      await res.stream.drain<void>();
+      final page = res.headers['location'] ?? '';
+      final tag = RegExp(r'/releases/tag/([^/?#]+)$').firstMatch(page)?.group(1);
+      final version = tag == null ? null : RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(tag)?.group(0);
+      if (tag == null || version == null) return null;
+      final name = 'catalyst_$version.apk';
+      final apk = 'https://github.com/$releasesRepo/releases/download/$tag/$name';
+      final head = await client.head(Uri.parse(apk)).timeout(const Duration(seconds: 15));
+      return {
+        'tag_name': tag,
+        'html_url': page,
+        'assets': [if (head.statusCode == 200) {'name': name, 'browser_download_url': apk}],
+      };
+    } catch (e) {
+      debugPrint('[catalyst] update check (website) failed: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> _fromApi(http.Client client) async {
+    try {
+      final res = await client
+          .get(Uri.parse('https://api.github.com/repos/$releasesRepo/releases/latest'), headers: {'Accept': 'application/vnd.github+json'})
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body);
+      return data is Map<String, dynamic> ? data : null;
+    } catch (e) {
+      debugPrint('[catalyst] update check (API) failed: $e');
+      return null;
+    }
   }
 
   /// The version and APK of a GitHub release (null if it isn't usable).

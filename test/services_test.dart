@@ -1,6 +1,7 @@
 // Phone-side helpers: the update check, which reminders get scheduled, the
 // home-screen widget's figures, and offline use (the saved copy and the outbox).
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:catalyst/data/app_state.dart';
@@ -14,6 +15,8 @@ import 'package:catalyst/services/widget_sync.dart';
 import 'package:catalyst/util/currency.dart';
 import 'package:catalyst/util/format.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
@@ -34,9 +37,11 @@ void main() {
   });
 
   group('updates', () {
+    setUp(Updates.freshStart);
     tearDown(() {
       Updates.available.value = null;
       Updates.current = '';
+      Updates.newClient = http.Client.new;
     });
 
     test('versions compare by number, not text', () {
@@ -79,6 +84,72 @@ void main() {
       expect(Updates.available.value, isNull);
     });
 
+    test('each start of the app asks GitHub; after that, every half hour', () async {
+      Updates.readVersion = () async => '1.5.0';
+      var asked = 0;
+      var latest = 'v1.5.0';
+      Updates.fetchLatest = () async {
+        asked++;
+        return _release(latest);
+      };
+      expect(await Updates.check(), isNull); // on the latest
+      expect(asked, 1);
+      latest = 'v1.6.0'; // published a moment later
+      expect(await Updates.check(), isNull); // the same run, within the half hour: not asked again
+      expect(asked, 1);
+      Updates.freshStart(); // the app is opened again
+      expect((await Updates.check())?.version, '1.6.0');
+      expect(asked, 2);
+      // Half an hour on, a running app asks again.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('update:checked', DateTime.now().subtract(const Duration(minutes: 31)).millisecondsSinceEpoch);
+      await Updates.check();
+      expect(asked, 3);
+    });
+
+    const site = 'https://github.com/HAVIC-47/catalyst-app';
+    http.Response latestRedirect(String tag) => http.Response('', 302, headers: {'location': '$site/releases/tag/$tag'});
+
+    test("the website answers first — the latest release and its APK by name — so the API's hourly limit doesn't matter", () async {
+      final asked = <String>[];
+      Updates.newClient = () => MockClient((req) async {
+            asked.add('${req.method} ${req.url}');
+            if (req.url.toString() == '$site/releases/latest') return latestRedirect('v1.7.0');
+            if (req.method == 'HEAD' && req.url.toString() == '$site/releases/download/v1.7.0/catalyst_1.7.0.apk') return http.Response('', 200);
+            return http.Response('{"message":"API rate limit exceeded"}', 403);
+          });
+      final u = Updates.parseRelease((await Updates.fromGitHub())!)!;
+      expect((u.version, u.url, u.page), ('1.7.0', '$site/releases/download/v1.7.0/catalyst_1.7.0.apk', '$site/releases/tag/v1.7.0'));
+      expect(asked.where((a) => a.contains('api.github.com')), isEmpty);
+    });
+
+    test("no APK by that name: the API's list of files; the API out too: the release page", () async {
+      var api = true;
+      Updates.newClient = () => MockClient((req) async {
+            if (req.url.toString() == '$site/releases/latest') return latestRedirect('v1.7.0');
+            if (req.method == 'HEAD') return http.Response('', 404);
+            if (req.url.host == 'api.github.com') {
+              return api ? http.Response(jsonEncode(_release('v1.7.0', assets: const ['Catalyst-universal.apk'])), 200) : http.Response('', 403);
+            }
+            return http.Response('', 404);
+          });
+      expect(Updates.parseRelease((await Updates.fromGitHub())!)!.url, '$site/releases/download/v1.7.0/Catalyst-universal.apk');
+      api = false;
+      final u = Updates.parseRelease((await Updates.fromGitHub())!)!;
+      expect((u.version, u.url), ('1.7.0', latestReleaseUrl));
+    });
+
+    test("the website unreachable: the API; nothing reachable: no answer", () async {
+      var api = true;
+      Updates.newClient = () => MockClient((req) async {
+            if (api && req.url.host == 'api.github.com') return http.Response(jsonEncode(_release('v1.7.0', assets: const ['catalyst_1.7.0.apk'])), 200);
+            throw const SocketException('unreachable');
+          });
+      expect(Updates.parseRelease((await Updates.fromGitHub())!)!.url, '$site/releases/download/v1.7.0/catalyst_1.7.0.apk');
+      api = false;
+      expect(await Updates.fromGitHub(), isNull);
+    });
+
     test('on the latest version there is nothing to show', () async {
       Updates.readVersion = () async => '1.4.0';
       Updates.fetchLatest = () async => _release('v1.4.0');
@@ -88,21 +159,28 @@ void main() {
   });
 
   group('update pop-up', () {
+    setUp(Updates.freshStart);
     tearDown(() {
       Updates.available.value = null;
       Updates.current = '';
     });
 
-    test('a found update is remembered after a restart, between checks', () async {
+    test('a found update is remembered after a restart, even when GitHub can\'t be reached', () async {
       Updates.readVersion = () async => '1.3.0';
       Updates.fetchLatest = () async => _release('v9.9.9');
       expect((await Updates.check(force: true))?.version, '9.9.9');
-      // The app restarts within the check interval: nothing is fetched, the update is still known.
+      // The app restarts offline: asking fails, the update found before still shows.
       Updates.available.value = null;
       Updates.current = '';
-      Updates.fetchLatest = () async => throw StateError('not fetched again so soon');
+      Updates.freshStart();
+      Updates.fetchLatest = () async => throw const SocketException('offline');
       expect((await Updates.check())?.version, '9.9.9');
       expect(Updates.available.value?.version, '9.9.9');
+      // And when GitHub answers nothing useful, the same.
+      Updates.available.value = null;
+      Updates.freshStart();
+      Updates.fetchLatest = () async => null;
+      expect((await Updates.check())?.version, '9.9.9');
     });
 
     test('it pops up once per version, and again a few days after "Later"', () async {

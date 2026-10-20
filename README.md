@@ -4,11 +4,11 @@
 
 **Money meets _mood_.** Track every taka against how the day actually felt.
 
-[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.6.0-D4381C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.0/catalyst_1.6.0.apk)
+[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.6.1-D4381C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.1/catalyst_1.6.1.apk)
 &nbsp;
 [![Latest release](https://img.shields.io/github/v/release/HAVIC-47/catalyst-app?style=for-the-badge&color=11101F&label=version)](https://github.com/HAVIC-47/catalyst-app/releases/latest)
 
-**Direct download (1.6.0):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.0/catalyst_1.6.0.apk · every version: [releases](https://github.com/HAVIC-47/catalyst-app/releases)
+**Direct download (1.6.1):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.1/catalyst_1.6.1.apk · every version: [releases](https://github.com/HAVIC-47/catalyst-app/releases)
 
 Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https://catalyst-hishab.vercel.app)
 
@@ -42,20 +42,24 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
 
 ## Install
 
-1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.0/catalyst_1.6.0.apk)**
+1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.1/catalyst_1.6.1.apk)**
    (or download it on a computer and send it over USB, Drive, Telegram…).
-2. Open the downloaded `catalyst_1.6.0.apk` (the file is named after its version). Android asks once to allow
+2. Open the downloaded `catalyst_1.6.1.apk` (the file is named after its version). Android asks once to allow
    installs from your browser or file manager — allow it, then tap **Install**.
 3. Log in with your Catalyst account, or create one.
 
 The download is a universal APK (~60 MB) that runs on any Android phone. A smaller build for
-modern 64-bit phones, [`catalyst_1.6.0_arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.0/catalyst_1.6.0_arm64.apk) (~22 MB), is attached to every
+modern 64-bit phones, [`catalyst_1.6.1_arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.1/catalyst_1.6.1_arm64.apk) (~22 MB), is attached to every
 [release](https://github.com/HAVIC-47/catalyst-app/releases).
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 From 1.4.0 the app tells you when a new version is out: tap **Update** and the new APK downloads.
 
-**New in 1.6.0:** a **brighter light mode** — livelier colors that pop, with text that stays easy to read;
+**New in 1.6.1:** the **update pop-up comes straight away** — the app looks for a new version every time it
+opens (and every half hour while open), through github.com rather than GitHub's API, whose hourly limit phones on a
+shared mobile-data address can run out of.
+
+**1.6.0:** a **brighter light mode** — livelier colors that pop, with text that stays easy to read;
 **icons for categories** instead of letters (picked from the name, or choose one); **your order** — drag the
 dashboard sections and your categories up or down (or use the arrows); **scans know how you paid** — a bKash,
 Nagad, card or bank screenshot, or a cash memo, picks its wallet by itself; **live gold and silver prices** for
@@ -193,8 +197,9 @@ pull down to refresh, or just reopen the app.
   one, then the new one), forgot password (the email's link opens the app to set a new one), optional Google
   sign-in, **Erase my data** (every entry, wallet, bill, board and note goes; the account and settings stay — for
   starting fresh) and Delete account.
-- **Updates** — when a new version is on GitHub the app pops up (once per version, again a few days after
-  **Later**) and shows a banner; **Update** starts the download. The first launch after an update pops up what's new.
+- **Updates** — the app looks for a new version every time it opens (and every half hour while open); when one is
+  on GitHub it pops up (once per version, again a few days after **Later**) and shows a banner; **Update** starts
+  the download. The first launch after an update pops up what's new.
 - **About the app** — everything the app does, with what's new in this version on top, plus the version and
   **Check for updates**.
 - **Settings** — a short list that says how each thing is set (language and currency, notifications, dashboard,
