@@ -1169,4 +1169,13 @@ const bn = <String, String>{
   'Updates show up straight away': 'আপডেট আসামাত্র জানায়',
   'The app looks for a new version every time it opens, and finds it even when GitHub is busy — so the update pop-up comes as soon as one is out.': 'অ্যাপ প্রতিবার খোলার সময় নতুন সংস্করণ খোঁজে, GitHub ব্যস্ত থাকলেও খুঁজে পায় — তাই নতুন সংস্করণ এলেই আপডেটের পপ-আপ আসে।',
   "The app tells you as soon as a new version is out — it looks every time it opens — and Update downloads it; afterwards it shows what's new.": 'নতুন সংস্করণ এলেই অ্যাপ জানায় — প্রতিবার খোলার সময় খোঁজে — আর আপডেটে চাপ দিলে ডাউনলোড হয়; পরে দেখায় নতুন কী এল।',
+  'Privacy Policy': 'গোপনীয়তা নীতি',
+  'Terms of Service': 'ব্যবহারের শর্তাবলি',
+  'Google Play keeps the app up to date.': 'Google Play অ্যাপটি আপডেট রাখে।',
+  'Open in Google Play': 'Google Play-তে খুলুন',
+  'On Google Play': 'এখন Google Play-তে',
+  'Catalyst comes from Google Play now, and Google Play keeps it up to date.': 'Catalyst এখন Google Play থেকে আসে, আর Google Play-ই একে আপডেট রাখে।',
+  'Privacy Policy and Terms': 'গোপনীয়তা নীতি ও শর্তাবলি',
+  'The login screen and About the app link to the Privacy Policy and the Terms of Service.': 'লগ ইন স্ক্রিন আর "অ্যাপ সম্পর্কে" থেকে গোপনীয়তা নীতি ও ব্যবহারের শর্তাবলি খোলা যায়।',
+  "Google Play keeps the app up to date; after each update it shows what's new.": 'Google Play অ্যাপটি আপডেট রাখে; প্রতিটি আপডেটের পরে দেখায় নতুন কী এল।',
 };

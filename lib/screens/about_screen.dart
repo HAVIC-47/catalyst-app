@@ -1,17 +1,20 @@
 // About the app (Settings → About the app): the version and updates, what's new
-// in this version, then everything the Android app does (lib/data/features.dart).
+// in this version, then everything the Android app does (lib/data/features.dart),
+// and the Privacy Policy and Terms at the foot.
 // The same "what's new" pops up once after each update (showWhatsNew), and a
 // newer version on GitHub pops up with an Update button (showUpdateDialog) — both
-// called by the shell.
+// called by the shell. The Google Play build points to its Play page instead.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../config.dart';
 import '../data/features.dart';
 import '../services/updates.dart';
 import '../services/whats_new.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../util/i18n.dart';
+import '../widgets/legal_links.dart';
 import '../widgets/ui.dart';
 
 /// Open About on top of the app.
@@ -92,7 +95,10 @@ class _AboutScreenState extends State<AboutScreen> {
                   tr('Mood × money: an honest ledger that maps every taka against how the day actually felt.'),
                   style: bodyStyle(p, 14, color: p.muted(0.6), height: 1.5),
                 ),
-                if (_found != null) ...[
+                if (playStore) ...[
+                  const SizedBox(height: 10),
+                  Text(tr('Google Play keeps the app up to date.'), style: bodyStyle(p, 13, color: p.muted(0.45))),
+                ] else if (_found != null) ...[
                   const SizedBox(height: 10),
                   Text(tr('Version {version} is out.', {'version': _found!.version}), style: bodyStyle(p, 13.5, color: p.accent)),
                 ] else if (_checked) ...[
@@ -103,13 +109,20 @@ class _AboutScreenState extends State<AboutScreen> {
                 Wrap(spacing: 10, runSpacing: 10, children: [
                   if (_found != null)
                     PrimaryButton(icon: LucideIcons.download, label: tr('Update'), height: 42, onPressed: () => Updates.download(_found!)),
-                  HairlineButton(
-                    height: 42,
-                    onPressed: _checking ? null : _check,
-                    child: _checking
-                        ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.8, color: p.accent))
-                        : Text(tr('Check for updates'), style: bodyStyle(p, 13.5, color: p.muted(0.8))),
-                  ),
+                  if (playStore)
+                    HairlineButton(
+                      height: 42,
+                      onPressed: Updates.openStore,
+                      child: Text(tr('Open in Google Play'), style: bodyStyle(p, 13.5, color: p.muted(0.8))),
+                    )
+                  else
+                    HairlineButton(
+                      height: 42,
+                      onPressed: _checking ? null : _check,
+                      child: _checking
+                          ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.8, color: p.accent))
+                          : Text(tr('Check for updates'), style: bodyStyle(p, 13.5, color: p.muted(0.8))),
+                    ),
                 ]),
               ]),
             ),
@@ -123,6 +136,7 @@ class _AboutScreenState extends State<AboutScreen> {
                   for (final f in g.features) FeatureRow(feature: f),
                 ]),
               ),
+            const LegalLinks(),
           ],
         ),
       ),

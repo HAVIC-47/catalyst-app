@@ -628,12 +628,14 @@ class _AlertsSection extends StatelessWidget {
           label: tr('Challenges'),
           hint: tr('Won, missed, or on its last day'),
         ),
-        _SwitchRow(
-          on: r.updates,
-          onChanged: (v) => app.setReminders(r.copyWith(updates: v)),
-          label: tr('App updates'),
-          hint: tr('A pop-up when a new version is out (the banner stays)'),
-        ),
+        // Google Play updates its build itself, with its own notice.
+        if (!playStore)
+          _SwitchRow(
+            on: r.updates,
+            onChanged: (v) => app.setReminders(r.copyWith(updates: v)),
+            label: tr('App updates'),
+            hint: tr('A pop-up when a new version is out (the banner stays)'),
+          ),
       ]),
     );
   }

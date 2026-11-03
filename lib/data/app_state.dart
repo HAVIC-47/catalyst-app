@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
+import '../config.dart';
 import '../models.dart';
 import '../util/currency.dart';
 import '../util/format.dart';
@@ -60,11 +61,12 @@ class ReminderPrefs {
   final bool moodSpend; // a lot spent on a low-mood day
   final bool streaks; // streak milestones, and a streak about to end
   final bool challenges; // a challenge won, missed, or on its last day
-  final bool updates; // a new version of the app
+  final bool updates; // a new version of the app (not a kind in the Google Play build, which Play updates)
 
   /// How many kinds are on, of all of them (the check-in time isn't a kind).
-  int get onCount => [checkin, bills, budgets, dhar, recurring, moodSpend, streaks, challenges, updates].where((on) => on).length;
-  static const kinds = 9;
+  int get onCount =>
+      [checkin, bills, budgets, dhar, recurring, moodSpend, streaks, challenges, if (!playStore) updates].where((on) => on).length;
+  static const kinds = playStore ? 8 : 9;
 
   factory ReminderPrefs.fromJson(Object? raw) {
     final r = raw is Map ? raw : const {};

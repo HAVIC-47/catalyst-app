@@ -267,6 +267,17 @@ banner compares the installed version with the latest release and downloads its 
 the same version code, 2000 + the build number (the per-ABI arm64 build adds 2000; `build_apk.ps1` gives the
 universal build the same), so a phone can update from either file to either file.
 
+### Google Play
+
+`build_aab.ps1` (or double-click `build_aab.bat`) builds the signed App Bundle Google Play takes —
+`dist\catalyst_<version>.aab`, with the same version code as the APKs (2000 + the build number) and R8's
+`mapping.txt` beside it. It needs `env.json` and `android/key.properties`: the release keystore is the upload key.
+The Play build is compiled with `STORE=play` (`lib/config.dart`): Google Play updates it, so it never asks GitHub
+for releases or offers an APK download (Play doesn't allow an app to update itself another way) — no update pop-up,
+banner or "App updates" setting, and About the app opens the Play page instead. Everything else is the same app.
+The login screen and About the app link to the website's Privacy Policy and Terms; the account-deletion page Play
+asks for is the website's `/delete-account`.
+
 ### Logo
 
 The launcher icon has a light and a dark version: `mipmap-*` (white mark on red-orange, `values/colors.xml`) and

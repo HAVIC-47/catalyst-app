@@ -15,6 +15,7 @@ import '../theme/app_theme.dart';
 import '../theme/palette.dart';
 import '../theme/theme_controller.dart';
 import '../util/i18n.dart';
+import '../widgets/legal_links.dart';
 import '../widgets/ui.dart';
 
 enum _Mode { login, signup, forgot }
@@ -322,6 +323,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 14),
+            const LegalLinks(),
           ],
         ),
       ),

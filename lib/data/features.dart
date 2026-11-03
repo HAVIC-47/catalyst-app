@@ -32,6 +32,15 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.6.2', [
+        if (playStore)
+          Feature(LucideIcons.store, tr('On Google Play'), tr('Catalyst comes from Google Play now, and Google Play keeps it up to date.')),
+        Feature(
+          LucideIcons.shieldCheck,
+          tr('Privacy Policy and Terms'),
+          tr('The login screen and About the app link to the Privacy Policy and the Terms of Service.'),
+        ),
+      ]),
       Release('1.6.1', [
         Feature(
           LucideIcons.download,
@@ -247,7 +256,9 @@ List<FeatureGroup> appFeatures() {
       Feature(
         LucideIcons.download,
         tr('Updates'),
-        tr("The app tells you as soon as a new version is out — it looks every time it opens — and Update downloads it; afterwards it shows what's new."),
+        playStore
+            ? tr("Google Play keeps the app up to date; after each update it shows what's new.")
+            : tr("The app tells you as soon as a new version is out — it looks every time it opens — and Update downloads it; afterwards it shows what's new."),
       ),
     ]),
     FeatureGroup(tr('Your'), tr('way'), [

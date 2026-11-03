@@ -4,6 +4,7 @@
 // release's APK in the browser, which downloads it — Android then offers to
 // install it over this one. Every start of the app asks GitHub, then at most every
 // half hour; a found update is remembered, so it still shows while offline.
+// The Google Play build (config.playStore) skips all of this: Play updates it.
 import 'dart:async';
 import 'dart:convert';
 
@@ -12,6 +13,8 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../config.dart';
 
 const releasesRepo = 'HAVIC-47/catalyst-app';
 
@@ -68,6 +71,7 @@ abstract final class Updates {
   /// half hour (always when [force]d). Returns the update when there is one, and
   /// calls [onNew] the first time a version is seen.
   static Future<UpdateInfo?> check({bool force = false, void Function(UpdateInfo)? onNew}) async {
+    if (playStore) return null; // Google Play updates this build.
     try {
       final prefs = await SharedPreferences.getInstance();
       await version();
@@ -133,6 +137,9 @@ abstract final class Updates {
 
   /// Open the APK link in the browser (which downloads it).
   static Future<bool> download(UpdateInfo u) => launchUrl(Uri.parse(u.url), mode: LaunchMode.externalApplication);
+
+  /// The app's page in the Play Store (the Google Play build's "updates").
+  static Future<bool> openStore() => launchUrl(Uri.parse(playStoreUrl), mode: LaunchMode.externalApplication);
 
   /// The latest release, shaped like GitHub's API answer (tag_name, html_url,
   /// assets). First from the website: github.com/…/releases/latest redirects to
