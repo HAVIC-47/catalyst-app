@@ -421,7 +421,7 @@ class _UpdateBanner extends StatelessWidget {
           action: tr('Update'),
           onAction: () async {
             if (!await Updates.download(u) && context.mounted) {
-              showError(context, tr('Couldn\'t open the download — get it from {url}', {'url': latestReleaseUrl}));
+              showError(context, tr('Couldn\'t open the download — get it from {url}', {'url': u.url}));
             }
           },
           onClose: () => Updates.dismiss(u),

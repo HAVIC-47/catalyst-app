@@ -32,6 +32,13 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.7.1', [
+        Feature(
+          LucideIcons.download,
+          tr('Update starts the download'),
+          tr("Tapping Update goes straight to the new version's download, with no release page to scroll through. And the app only tells you about a new version once it's ready to download."),
+        ),
+      ]),
       Release('1.7.0', [
         Feature(
           LucideIcons.shoppingCart,

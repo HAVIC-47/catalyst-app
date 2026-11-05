@@ -67,6 +67,17 @@ Future<void> _tall(WidgetTester tester) async {
   addTearDown(tester.view.reset);
 }
 
+/// A newer release on GitHub, with its APK.
+const _apk = 'https://github.com/HAVIC-47/catalyst-app/releases/download/v9.9.9/catalyst_9.9.9.apk';
+Map<String, dynamic> _newRelease() => {
+      'tag_name': 'v9.9.9',
+      'draft': false,
+      'prerelease': false,
+      'assets': [
+        {'name': 'catalyst_9.9.9.apk', 'browser_download_url': _apk},
+      ],
+    };
+
 void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -357,7 +368,7 @@ void main() {
     await _tall(tester);
     _phoneChannels();
     Updates.readVersion = () async => '1.4.3';
-    Updates.fetchLatest = () async => {'tag_name': 'v9.9.9', 'draft': false, 'prerelease': false, 'assets': const []};
+    Updates.fetchLatest = () async => _newRelease();
     addTearDown(() {
       Updates.available.value = null;
       Updates.current = '';
@@ -380,6 +391,39 @@ void main() {
     await tester.pumpWidget(shell());
     await tester.pumpAndSettle();
     expect(find.byType(UpdateDialog), findsNothing); // said once for this version
+  });
+
+  testWidgets('Update starts the APK download straight away, from the pop-up and the banner', (tester) async {
+    await _tall(tester);
+    _phoneChannels();
+    final opened = <String>[];
+    const launcher = MethodChannel('plugins.flutter.io/url_launcher');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(launcher, (call) async {
+      if (call.method == 'launch') opened.add('${(call.arguments as Map)['url']}');
+      return true;
+    });
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(launcher, null);
+      Updates.available.value = null;
+      Updates.current = '';
+    });
+    Updates.readVersion = () async => '1.4.3';
+    Updates.fetchLatest = () async => _newRelease();
+    final theme = await ThemeController.load();
+    await tester.pumpWidget(MultiProvider(
+      providers: [ChangeNotifierProvider.value(value: theme), ChangeNotifierProvider<AppState>.value(value: _app(FakeMoneyDb()))],
+      child: MaterialApp(theme: buildTheme(Palette.night), home: const AppShell()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(PrimaryButton, 'Update'));
+    await tester.pumpAndSettle();
+    expect(find.byType(UpdateDialog), findsNothing);
+    expect(opened, [_apk]);
+
+    await tester.tap(find.text('UPDATE')); // the banner stays
+    await tester.pumpAndSettle();
+    expect(opened, [_apk, _apk]);
   });
 
   testWidgets('Settings: Paste a message reads a copied bKash message', (tester) async {

@@ -226,7 +226,14 @@ void main() {
       Updates.available.value = null;
       Updates.current = '';
     });
-    Updates.fetchLatest = () async => {'tag_name': 'v9.9.9', 'draft': false, 'prerelease': false, 'assets': const []};
+    Updates.fetchLatest = () async => {
+          'tag_name': 'v9.9.9',
+          'draft': false,
+          'prerelease': false,
+          'assets': const [
+            {'name': 'catalyst_9.9.9.apk', 'browser_download_url': 'https://example.com/catalyst_9.9.9.apk'},
+          ],
+        };
     final app = _app(FakeMoneyDb())..reminders = const ReminderPrefs(updates: false);
     final theme = await ThemeController.load();
     await tester.pumpWidget(MultiProvider(

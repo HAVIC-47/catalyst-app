@@ -58,7 +58,7 @@ void main() {
       expect(u.url, endsWith('/v1.4.0/Catalyst.apk'));
       expect(Updates.parseRelease({..._release('v1.5.0'), 'prerelease': true}), isNull);
       expect(Updates.parseRelease(_release('nightly')), isNull);
-      expect(Updates.parseRelease(_release('v1.4.1', assets: const []))!.url, latestReleaseUrl);
+      expect(Updates.parseRelease(_release('v1.4.1', assets: const [])), isNull); // no APK yet: nothing to offer
       // From 1.6 the files carry the version; the arm64-only one is never picked, whatever the order.
       for (final assets in [
         ['catalyst_1.6.0.apk', 'catalyst_1.6.0_arm64.apk'],
@@ -123,7 +123,7 @@ void main() {
       expect(asked.where((a) => a.contains('api.github.com')), isEmpty);
     });
 
-    test("no APK by that name: the API's list of files; the API out too: the release page", () async {
+    test("no APK by that name: the API's list of files; the API out too: nothing to offer", () async {
       var api = true;
       Updates.newClient = () => MockClient((req) async {
             if (req.url.toString() == '$site/releases/latest') return latestRedirect('v1.7.0');
@@ -135,8 +135,7 @@ void main() {
           });
       expect(Updates.parseRelease((await Updates.fromGitHub())!)!.url, '$site/releases/download/v1.7.0/Catalyst-universal.apk');
       api = false;
-      final u = Updates.parseRelease((await Updates.fromGitHub())!)!;
-      expect((u.version, u.url), ('1.7.0', latestReleaseUrl));
+      expect(Updates.parseRelease((await Updates.fromGitHub())!), isNull);
     });
 
     test("the website unreachable: the API; nothing reachable: no answer", () async {
@@ -148,6 +147,21 @@ void main() {
       expect(Updates.parseRelease((await Updates.fromGitHub())!)!.url, '$site/releases/download/v1.7.0/catalyst_1.7.0.apk');
       api = false;
       expect(await Updates.fromGitHub(), isNull);
+    });
+
+    test('a release with no APK yet is not offered: no pop-up, no notification, no page to scroll through', () async {
+      Updates.readVersion = () async => '1.7.0';
+      final told = <String>[];
+      Updates.fetchLatest = () async => _release('v1.7.1', assets: const []);
+      expect(await Updates.check(force: true, onNew: (u) => told.add(u.version)), isNull);
+      expect(Updates.available.value, isNull);
+      expect(told, isEmpty);
+      // The APK goes up: the next check offers it, with the file's own link.
+      Updates.fetchLatest = () async => _release('v1.7.1', assets: const ['catalyst_1.7.1.apk', 'catalyst_1.7.1_arm64.apk']);
+      final u = await Updates.check(force: true, onNew: (u) => told.add(u.version));
+      expect(u?.url, '$site/releases/download/v1.7.1/catalyst_1.7.1.apk');
+      expect(Updates.available.value?.url, u?.url);
+      expect(told, ['1.7.1']);
     });
 
     test('on the latest version there is nothing to show', () async {

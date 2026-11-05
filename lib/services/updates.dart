@@ -2,8 +2,10 @@
 // when the latest one is newer than this install, the app pops up (once per
 // version, again a few days after "Later") and shows a banner. "Update" opens the
 // release's APK in the browser, which downloads it — Android then offers to
-// install it over this one. Every start of the app asks GitHub, then at most every
-// half hour; a found update is remembered, so it still shows while offline.
+// install it over this one. A release isn't offered until its APK is up, so there's
+// always a file to download, never just a page. Every start of the app asks GitHub,
+// then at most every half hour; a found update is remembered, so it still shows
+// while offline.
 // The Google Play build (config.playStore) skips all of this: Play updates it.
 import 'dart:async';
 import 'dart:convert';
@@ -152,7 +154,7 @@ abstract final class Updates {
     try {
       final site = await _fromWebsite(client);
       if (site != null && (site['assets'] as List).isNotEmpty) return site;
-      // No APK by that name: the API lists the real ones (else the release page will do).
+      // No APK by that name: the API lists the real ones (no list: nothing is offered).
       return await _fromApi(client) ?? site;
     } finally {
       client.close();
@@ -196,7 +198,8 @@ abstract final class Updates {
     }
   }
 
-  /// The version and APK of a GitHub release (null if it isn't usable).
+  /// The version and APK of a GitHub release. Null if it isn't usable — that includes
+  /// a release whose APK isn't up yet, so Update only ever starts a download.
   @visibleForTesting
   static UpdateInfo? parseRelease(Map<String, dynamic> j) {
     if (j['draft'] == true || j['prerelease'] == true) return null;
@@ -209,11 +212,9 @@ abstract final class Updates {
     ];
     // The universal APK — catalyst_1.6.0.apk (Catalyst.apk before 1.6) — not the arm64-only one.
     final apk = apks.where((a) => !'${a['name']}'.toLowerCase().contains('arm64')).firstOrNull ?? apks.firstOrNull;
-    return UpdateInfo(
-      version: version,
-      url: apk?['browser_download_url'] as String? ?? latestReleaseUrl,
-      page: j['html_url'] as String? ?? latestReleaseUrl,
-    );
+    final url = apk?['browser_download_url'];
+    if (url is! String || url.isEmpty) return null;
+    return UpdateInfo(version: version, url: url, page: j['html_url'] as String? ?? latestReleaseUrl);
   }
 
   /// Whether [a] ("1.4.0") is a later version than [b] ("1.3.0").
