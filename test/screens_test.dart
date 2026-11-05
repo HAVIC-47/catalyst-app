@@ -198,7 +198,7 @@ void main() {
     expect(app.reminders.bills, isFalse);
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('8 of 9 on'), findsOneWidget);
+    expect(find.textContaining('9 of 10 on'), findsOneWidget);
 
     await tester.tap(find.text('Language & currency'));
     await tester.pumpAndSettle();

@@ -7,6 +7,14 @@ class FakeMoneyDb implements MoneyDb {
   final calls = <String>[];
   var _id = 0;
 
+  /// What logBought does instead of adding a row: 'duplicate' (the database already
+  /// has one) or anything else, thrown.
+  Object? boughtFails;
+
+  /// Thrown by updateTicket, when set.
+  Object? ticketFails;
+  final ticketOf = <String, String>{}; // expense id -> the item it was logged for
+
   String _next(String prefix) => '$prefix${++_id}';
 
   @override
@@ -147,4 +155,51 @@ class FakeMoneyDb implements MoneyDb {
 
   @override
   Future<void> deleteChallenge(String id) async => calls.add('deleteChallenge $id');
+
+  @override
+  Future<Ticket> addTicket(Map<String, dynamic> row) async {
+    calls.add('addTicket ${row['title']}');
+    return Ticket.fromRow({...row, 'id': _next('t')});
+  }
+
+  @override
+  Future<List<Ticket>> addTickets(List<Map<String, dynamic>> rows) async {
+    calls.add('addTickets ${rows.length}');
+    return [for (final r in rows) Ticket.fromRow({...r, 'id': _next('t')})];
+  }
+
+  @override
+  Future<void> updateTicket(String id, Map<String, dynamic> patch) async {
+    if (ticketFails != null) throw ticketFails!;
+    calls.add('updateTicket $id $patch');
+  }
+
+  @override
+  Future<Txn> updateTransaction(String id, NewTxn t) async {
+    calls.add('updateTransaction $id ${t.amount} ${t.note}');
+    return Txn.fromRow({...t.toRow(), 'id': id, 'created_at': '', 'ticket_id': ticketOf[id]});
+  }
+
+  @override
+  Future<void> deleteTransaction(String id) async => calls.add('deleteTransaction $id');
+
+  @override
+  Future<Txn?> logBought(String ticketId, NewTxn t) async {
+    final fails = boughtFails;
+    if (fails == 'duplicate') {
+      calls.add('logBought $ticketId (already there)');
+      return null;
+    }
+    if (fails != null) throw fails;
+    calls.add('logBought $ticketId ${t.amount}');
+    final id = _next('tx');
+    ticketOf[id] = ticketId;
+    return Txn.fromRow({...t.toRow(), 'id': id, 'created_at': '', 'ticket_id': ticketId});
+  }
+
+  @override
+  Future<void> unlinkTicket(String id) async {
+    calls.add('unlinkTicket $id');
+    ticketOf.remove(id);
+  }
 }

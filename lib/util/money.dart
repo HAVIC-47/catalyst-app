@@ -3,6 +3,7 @@
 // and how much of a budget is used.
 import '../models.dart';
 import 'format.dart';
+import 'i18n.dart';
 
 double _cents(double n) => (n * 100).roundToDouble() / 100;
 
@@ -106,6 +107,19 @@ String? nextDue(String dueOn, String recurrence) {
 }
 
 bool _same(String a, String b) => a.trim().toLowerCase() == b.trim().toLowerCase();
+
+/// The category a bought to-buy item is logged under: one named like its list (the
+/// "Groceries" list, Groceries), else Shopping, else Other.
+Category? boughtCategory(String listName, List<Category> categories) {
+  final expense = categories.where((c) => c.kind == Kind.expense);
+  return expense.where((c) => _same(c.name, listName) || _same(tr(c.name), listName)).firstOrNull ??
+      expense.where((c) => _same(c.name, 'Shopping')).firstOrNull ??
+      expense.where((c) => _same(c.name, 'Other')).firstOrNull ??
+      expense.firstOrNull;
+}
+
+/// An expense with no amount yet: something marked as bought before its price was known.
+bool needsPrice(Txn t) => t.kind == Kind.expense && t.amount == 0;
 
 /// The expense category a bill's payment is logged under: its own, one named like
 /// it, Utilities, or Other.

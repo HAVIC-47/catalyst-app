@@ -32,6 +32,18 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.7.0', [
+        Feature(
+          LucideIcons.shoppingCart,
+          tr('Bought goes to expenses'),
+          tr("Mark something on a to-buy list as bought and it joins that day's expenses, at its price — or with no price yet and a reminder to add it. Moving it back asks before taking the expense off."),
+        ),
+        Feature(
+          LucideIcons.monitorSmartphone,
+          tr('Signed-in devices'),
+          tr('See everywhere your account is signed in, in Settings → Account. Remove any one device, or sign out of all of them.'),
+        ),
+      ]),
       Release('1.6.2', [
         if (playStore)
           Feature(LucideIcons.store, tr('On Google Play'), tr('Catalyst comes from Google Play now, and Google Play keeps it up to date.')),
@@ -217,6 +229,11 @@ List<FeatureGroup> appFeatures() {
         tr('Boards with columns and numbered tickets — priority, due dates, notes and prices. Press and hold to drag.'),
       ),
       Feature(
+        LucideIcons.shoppingCart,
+        tr('Bought goes to expenses'),
+        tr("Mark something on a to-buy list as bought and it joins that day's expenses, at its price — or with no price yet and a reminder to add it. Moving it back asks before taking the expense off."),
+      ),
+      Feature(
         LucideIcons.scanText,
         tr('Lists from a screenshot'),
         tr('On a board, + adds a whole list from a screenshot or photo — ticked items land as done, with Undo.'),
@@ -290,6 +307,11 @@ List<FeatureGroup> appFeatures() {
             : tr('Email and password, with Remember me — and Forgot password if you lose it.'),
       ),
       Feature(LucideIcons.shieldCheck, tr('Private'), tr('Your entries are locked to your account — no one else can read them.')),
+      Feature(
+        LucideIcons.monitorSmartphone,
+        tr('Signed-in devices'),
+        tr('See everywhere your account is signed in, in Settings → Account. Remove any one device, or sign out of all of them.'),
+      ),
       Feature(LucideIcons.eraser, tr('Erase my data'), tr('Deletes every entry but keeps the account — to start fresh.')),
       Feature(LucideIcons.userX, tr('Delete account'), tr('Removes the account and everything in it, from Settings.')),
     ]),

@@ -3,9 +3,10 @@
 // they work offline: the evening check-in for the next two weeks (skipping a day
 // that already has a mood), the day before a bill or a dhar is due, each
 // recurring entry at its time (it's added then — by the web's job or this app),
-// a streak about to end, a challenge's last day, and one-off alerts (mood &
-// money, streak milestones, challenges won or missed). Rebuilt whenever the data
-// or the settings change; each kind follows Settings → Notifications.
+// a streak about to end, a challenge's last day, bought items still without a price,
+// and one-off alerts (mood & money, streak milestones, challenges won or missed).
+// Rebuilt whenever the data or the settings change; each kind follows Settings →
+// Notifications.
 import 'dart:async';
 import 'dart:io';
 
@@ -29,6 +30,7 @@ abstract final class NoticeTarget {
   static const update = 'update';
   static const recurring = 'recurring';
   static const challenges = 'challenges';
+  static const prices = 'prices';
 }
 
 abstract final class Notifications {
@@ -137,7 +139,7 @@ abstract final class Notifications {
   }
 
   // Id ranges: check-ins 1000+, bills 2000+, dhar 3000+, recurring 4000+, the
-  // streak 5000, challenges 6000+, alerts shown now 7000+.
+  // streak 5000, challenges 6000+, alerts shown now 7000+, prices to add 8000.
   static const _days = 14;
 
   /// Schedule (or clear) the reminders from the current data and settings.
@@ -285,6 +287,15 @@ abstract final class Notifications {
         if (!at.isAfter(now) || c.days < 2) continue;
         out.add(PlannedNotice(6000 + i++, at, tr('Last day of your challenge'), challengeTitle(c, tr, formatCurrency), NoticeTarget.challenges));
         if (i >= 100) break;
+      }
+    }
+
+    // Bought items still without a price: the next evening, when the shopping's done.
+    if (r.prices) {
+      final n = app.needPrice.length;
+      if (n > 0) {
+        final at = tonight.isAfter(now) ? tonight : DateTime(today.year, today.month, today.day + 1, hour, minute);
+        out.add(PlannedNotice(8000, at, tr('Prices to add'), trn(n, '{n} bought item needs a price', '{n} bought items need a price'), NoticeTarget.prices));
       }
     }
     return out;

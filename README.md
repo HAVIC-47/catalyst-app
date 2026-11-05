@@ -4,11 +4,11 @@
 
 **Money meets _mood_.** Track every taka against how the day actually felt.
 
-[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.6.1-D4381C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.1/catalyst_1.6.1.apk)
+[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.7.0-D4381C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.7.0/catalyst_1.7.0.apk)
 &nbsp;
 [![Latest release](https://img.shields.io/github/v/release/HAVIC-47/catalyst-app?style=for-the-badge&color=11101F&label=version)](https://github.com/HAVIC-47/catalyst-app/releases/latest)
 
-**Direct download (1.6.1):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.1/catalyst_1.6.1.apk · every version: [releases](https://github.com/HAVIC-47/catalyst-app/releases)
+**Direct download (1.7.0):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.7.0/catalyst_1.7.0.apk · every version: [releases](https://github.com/HAVIC-47/catalyst-app/releases)
 
 Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https://catalyst-hishab.vercel.app)
 
@@ -39,23 +39,33 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
   <img src="docs/screenshots/dhar.png" width="200" alt="Dhar / baki — who owes you and whom you owe" />
   <img src="docs/screenshots/bangla.png" width="200" alt="The calendar with the app in Bangla" />
 </p>
+<p align="center">
+  <img src="docs/screenshots/devices.png" width="200" alt="Signed-in devices — remove any one of them, or sign out of all of them" />
+  <img src="docs/screenshots/add-prices.png" width="200" alt="Bought items with no price yet, in one list to fill in" />
+  <img src="docs/screenshots/bought-ask.png" width="200" alt="Moving a bought item back asks before taking its expense off" />
+</p>
 
 ## Install
 
-1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.1/catalyst_1.6.1.apk)**
+1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.7.0/catalyst_1.7.0.apk)**
    (or download it on a computer and send it over USB, Drive, Telegram…).
-2. Open the downloaded `catalyst_1.6.1.apk` (the file is named after its version). Android asks once to allow
+2. Open the downloaded `catalyst_1.7.0.apk` (the file is named after its version). Android asks once to allow
    installs from your browser or file manager — allow it, then tap **Install**.
 3. Log in with your Catalyst account, or create one.
 
-The download is a universal APK (~60 MB) that runs on any Android phone. A smaller build for
-modern 64-bit phones, [`catalyst_1.6.1_arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.6.1/catalyst_1.6.1_arm64.apk) (~22 MB), is attached to every
+The download is a universal APK (~58 MB) that runs on any Android phone. A smaller build for
+modern 64-bit phones, [`catalyst_1.7.0_arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.7.0/catalyst_1.7.0_arm64.apk) (~22 MB), is attached to every
 [release](https://github.com/HAVIC-47/catalyst-app/releases).
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 From 1.4.0 the app tells you when a new version is out: tap **Update** and the new APK downloads.
 
-**New in 1.6.1:** the **update pop-up comes straight away** — the app looks for a new version every time it
+**New in 1.7.0:** **bought goes to expenses** — mark something on a to-buy list as bought and it joins that day's
+expenses, at its price; with no price yet it's logged anyway, and a notification asks you to add it. Moving it back
+asks before taking the expense off. And **signed-in devices** in Settings → Account: see everywhere you're signed in,
+remove any one device, or sign out of all of them. A plain **Sign out** only ever signs out the phone you're on.
+
+**1.6.1:** the **update pop-up comes straight away** — the app looks for a new version every time it
 opens (and every half hour while open), through github.com rather than GitHub's API, whose hourly limit phones on a
 shared mobile-data address can run out of.
 
@@ -172,9 +182,16 @@ pull down to refresh, or just reopen the app.
   logging every day, for 3 to 30 days. Automatic entries don't count as spending. Mood & money shows what a low day
   costs next to a good one.
 - **Mood-spend alerts** — a notification when a low-mood day comes with at least 1.5× your usual spending.
+- **Bought goes to expenses** — on a to-buy list, an item reaching the last column (Bought) joins that day's
+  expenses, under a category named like the list, else Shopping, from the default wallet. With no price it's logged
+  at ৳0 and flagged: a notification (and another that evening), a banner and **Add price** in the ledger all lead to
+  one sheet listing what still needs a price. Prices stay in step both ways. Moving the item back asks first:
+  **Remove expense**, **Keep expense** (buying again logs a new one) or **Cancel** (it stays in Bought). One expense
+  per item, whichever device gets there first. Ticked items from a scanned list land in Bought without logging
+  anything — their date and price are unknown.
 - **Notifications** — scheduled on the phone, so they work offline: an evening "how was today?" when no mood is
   logged, the day before a bill or dhar is due, budget alerts, each recurring entry, a streak about to end, a
-  challenge's last day, and milestones and wins. Settings → Notifications turns each kind on or off (shared with
+  challenge's last day, bought items still without a price, and milestones and wins. Settings → Notifications turns each kind on or off (shared with
   the web), with the check-in time.
 - **Offline** — the app keeps a copy of your data on the phone, so it opens on everything with no connection. Money
   entries and moods you add (or edit, or delete) offline — for any day, month or year — wait on the phone and sync
@@ -195,8 +212,10 @@ pull down to refresh, or just reopen the app.
 - **Account** — **Remember me** on the login screen (off: the app asks you to log in again once it's been closed or
   away for a few minutes), an eye to see the password you type, change password (Settings → Account: the current
   one, then the new one), forgot password (the email's link opens the app to set a new one), optional Google
-  sign-in, **Erase my data** (every entry, wallet, bill, board and note goes; the account and settings stay — for
-  starting fresh) and Delete account.
+  sign-in, **signed-in devices** (Settings → Account: every login with its device's name and when it was last active
+  — **Remove** signs out any one of them, within a couple of minutes on a device that's open, and **Sign out of all
+  devices** does them all), **Erase my data** (every entry, wallet, bill, board and note goes; the account and
+  settings stay — for starting fresh) and Delete account.
 - **Updates** — the app looks for a new version every time it opens (and every half hour while open); when one is
   on GitHub it pops up (once per version, again a few days after **Later**) and shows a banner; **Update** starts
   the download. The first launch after an update pops up what's new.
@@ -305,6 +324,7 @@ lib/
   data/offline.dart    offline copy of the data + the outbox for entries made offline
   data/money_db.dart   the database calls behind bills, wallets, transfers, dhar, recurring entries and challenges
   data/account.dart    delete account (the web's /api/account/delete)
+  data/devices.dart    signed-in devices (the functions in the web's db/supabase.sql)
   data/features.dart   what the app does (About the app) and what each release brought (What's new)
   services/            reminders (local notifications), update check, what's new, home-screen widget, bKash / Nagad messages
   screens/wallets_screen.dart, dhar_screen.dart, sms_review_sheet.dart
@@ -320,6 +340,7 @@ lib/
   screens/memo_sheet.dart  memo scanner: memo -> one expense per item; notes -> expenses, income, new categories
   screens/list_scan_sheet.dart  list scanner: screenshot of a list -> tickets on the board, with Undo
   screens/boards_screen.dart  To-do / To buy boards with drag and drop
+  screens/price_sheet.dart  the expenses that still need a price, to fill in
   widgets/ai_insights.dart  the AI summary card
   widgets/scan_ui.dart  pieces shared by the two scanners
   util/limits.dart     text length limits (same as the database checks)

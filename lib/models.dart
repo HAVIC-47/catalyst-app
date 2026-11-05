@@ -68,6 +68,7 @@ class Txn {
     required this.createdAt,
     this.walletId,
     this.recurringId,
+    this.ticketId,
   });
 
   final String id;
@@ -82,6 +83,7 @@ class Txn {
   final String createdAt;
   final String? walletId; // null = the default wallet
   final String? recurringId; // logged automatically by this recurring rule
+  final String? ticketId; // logged when this to-buy item was marked as bought
 
   factory Txn.fromRow(Map<String, dynamic> r) => Txn(
         id: r['id'] as String,
@@ -96,17 +98,28 @@ class Txn {
         createdAt: (r['created_at'] as String?) ?? '',
         walletId: r['wallet_id'] as String?,
         recurringId: r['recurring_id'] as String?,
+        ticketId: r['ticket_id'] as String?,
       );
 
   /// The same entry in another wallet (null = the default one).
   Txn withWallet(String? wallet) => Txn(
       id: id, kind: kind, amount: amount, categoryId: categoryId, categoryName: categoryName, place: place,
-      note: note, occurredOn: occurredOn, occurredAt: occurredAt, createdAt: createdAt, walletId: wallet, recurringId: recurringId);
+      note: note, occurredOn: occurredOn, occurredAt: occurredAt, createdAt: createdAt, walletId: wallet, recurringId: recurringId, ticketId: ticketId);
 
   /// The same entry, no longer linked to the recurring rule that logged it.
   Txn unlinked() => Txn(
       id: id, kind: kind, amount: amount, categoryId: categoryId, categoryName: categoryName, place: place,
-      note: note, occurredOn: occurredOn, occurredAt: occurredAt, createdAt: createdAt, walletId: walletId);
+      note: note, occurredOn: occurredOn, occurredAt: occurredAt, createdAt: createdAt, walletId: walletId, ticketId: ticketId);
+
+  /// The same entry, no longer linked to the to-buy item it was logged for.
+  Txn withoutTicket() => Txn(
+      id: id, kind: kind, amount: amount, categoryId: categoryId, categoryName: categoryName, place: place,
+      note: note, occurredOn: occurredOn, occurredAt: occurredAt, createdAt: createdAt, walletId: walletId, recurringId: recurringId);
+
+  /// This entry's values with a new amount or note, for saving.
+  NewTxn edited({double? amount, String? note}) => NewTxn(
+      kind: kind, amount: amount ?? this.amount, categoryId: categoryId, categoryName: categoryName, place: place,
+      note: note ?? this.note, occurredOn: occurredOn, occurredAt: occurredAt, walletId: walletId);
 }
 
 /// The ledger's order (same as the database list): newest day first, then newest

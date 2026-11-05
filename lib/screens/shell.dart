@@ -6,9 +6,9 @@
 //
 // It also runs the phone-side helpers: reminders and the home-screen widget
 // follow the data, notices (budget alerts, offline saves, recurring entries
-// added) show as snack bars, alerts (mood & money, streaks, challenges) as phone
-// notifications, and slim banners say when the app is offline and when a new
-// version is out.
+// added) show as snack bars, alerts (mood & money, streaks, challenges, a price to
+// add) as phone notifications, and slim banners say when the app is offline, when a
+// new version is out and when bought items still need a price.
 // A bKash / Nagad message shared to the app opens for review, and the first
 // launch after an update pops up what's new.
 import 'dart:async';
@@ -50,6 +50,7 @@ import 'journal_screen.dart';
 import 'ledger_screen.dart';
 import 'list_scan_sheet.dart';
 import 'memo_sheet.dart';
+import 'price_sheet.dart';
 import 'recurring_screen.dart';
 import 'settings_screen.dart';
 import 'sms_review_sheet.dart';
@@ -193,6 +194,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         go(Section.recurring);
       case NoticeTarget.challenges:
         go(Section.challenges);
+      case NoticeTarget.prices:
+        openPriceSheet(context);
       case NoticeTarget.update:
         final u = Updates.available.value;
         if (u != null) Updates.download(u);
@@ -302,6 +305,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 const _TopBar(),
                 const _OfflineBanner(),
                 const _UpdateBanner(),
+                const _PricesBanner(),
                 Expanded(child: KeyedSubtree(key: ValueKey(_section), child: pages[_section]!)),
               ],
             ),
@@ -423,6 +427,33 @@ class _UpdateBanner extends StatelessWidget {
           onClose: () => Updates.dismiss(u),
         );
       },
+    );
+  }
+}
+
+/// Bought items still without a price. Dismissed, it stays away until another one comes.
+class _PricesBanner extends StatefulWidget {
+  const _PricesBanner();
+
+  @override
+  State<_PricesBanner> createState() => _PricesBannerState();
+}
+
+class _PricesBannerState extends State<_PricesBanner> {
+  int _dismissedAt = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final n = app.needPrice.length;
+    if (n < _dismissedAt) _dismissedAt = n;
+    if (!app.reminders.prices || n == 0 || n == _dismissedAt) return const SizedBox.shrink();
+    return _Banner(
+      icon: LucideIcons.shoppingCart,
+      text: trn(n, '{n} bought item needs a price', '{n} bought items need a price'),
+      action: tr('Add price'),
+      onAction: () => openPriceSheet(context),
+      onClose: () => setState(() => _dismissedAt = n),
     );
   }
 }

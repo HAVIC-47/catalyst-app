@@ -183,7 +183,7 @@ void main() {
     final app = _app(FakeMoneyDb());
     await tester.pumpWidget(host(app, const SettingsScreen()));
     await tester.pump();
-    expect(find.text('9 of 9 on · check-in at 9:00 PM'), findsOneWidget);
+    expect(find.text('10 of 10 on · check-in at 9:00 PM'), findsOneWidget);
     await tester.tap(find.text('Notifications'));
     await tester.pumpAndSettle();
     for (final label in ['Evening check-in', 'Bills', 'Budgets', 'Dhar', 'Recurring entries', 'Mood & money', 'Streaks', 'Challenges', 'App updates']) {
@@ -197,7 +197,7 @@ void main() {
     expect(app.reminders.updates, isFalse);
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
-    expect(find.text('7 of 9 on · check-in at 9:00 PM'), findsOneWidget);
+    expect(find.text('8 of 10 on · check-in at 9:00 PM'), findsOneWidget);
   });
 
   testWidgets('the dashboard: net worth over time, and the streak with the challenges going', (tester) async {

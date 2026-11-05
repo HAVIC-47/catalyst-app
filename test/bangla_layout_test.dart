@@ -1,6 +1,7 @@
 // Every screen on a small phone (360 dp wide), in Bangla and English: Bengali
 // text runs longer, so this catches anything that would overflow or clip.
 import 'package:catalyst/data/app_state.dart';
+import 'package:catalyst/data/devices.dart';
 import 'package:catalyst/data/features.dart';
 import 'package:catalyst/data/insights.dart';
 import 'package:catalyst/data/metal_prices.dart';
@@ -18,6 +19,7 @@ import 'package:catalyst/screens/entry_sheet.dart';
 import 'package:catalyst/screens/goals_screen.dart';
 import 'package:catalyst/screens/journal_screen.dart';
 import 'package:catalyst/screens/ledger_screen.dart';
+import 'package:catalyst/screens/price_sheet.dart';
 import 'package:catalyst/screens/recurring_screen.dart';
 import 'package:catalyst/screens/settings_screen.dart';
 import 'package:catalyst/screens/shell.dart';
@@ -241,6 +243,90 @@ void main() {
         tester.state<NavigatorState>(find.byType(Navigator)).pop();
         await tester.pumpAndSettle();
       }
+    });
+
+    testWidgets("signed-in devices fit a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {
+      await setAppLang(lang);
+      await _phone(tester);
+      final list = Devices.list, touch = Devices.touch;
+      addTearDown(() {
+        Devices.list = list;
+        Devices.touch = touch;
+      });
+      Map<String, dynamic> row(String id, String name, bool current) => {
+            'session_id': id, 'name': name, 'platform': 'web', 'user_agent': '', 'signed_in_at': '2026-10-21T08:00:00Z', 'last_seen': '2026-11-04T18:45:00Z', 'is_current': current,
+          };
+      Devices.touch = () async {};
+      Devices.list = () async => [
+            DeviceLogin.fromRow(row('a', 'Samsung Internet · Android', true)),
+            DeviceLogin.fromRow(row('b', 'A phone with a really rather long model name SM-S918B/DS', false)),
+            DeviceLogin.fromRow(row('c', '', false)),
+          ];
+      await tester.pumpWidget(_host(_app(), const SettingsScreen()));
+      await tester.pump(const Duration(milliseconds: 50));
+      openSettingsPage(tester.element(find.byType(SettingsScreen)), SettingsPage.account);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 6; i++) {
+        await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -300), warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final error = tester.takeException();
+      if (error is FlutterError) debugPrint(error.toStringDeep());
+      expect(error, isNull);
+      expect(find.byType(HairlineButton), findsWidgets);
+    });
+
+    testWidgets("the prices to add fit a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {
+      await setAppLang(lang);
+      await _phone(tester);
+      Txn priceless(String id, String note) => _txn(id, Kind.expense, 0, 'Groceries', 0, note: note);
+      final app = _app()
+        ..transactions = [
+          for (var i = 0; i < 8; i++) priceless('p$i', i.isEven ? 'A long name for something bought at the shop, with its brand and size' : 'Eggs'),
+        ];
+      await tester.pumpWidget(_host(app, const LedgerScreen()));
+      await tester.pumpAndSettle();
+      final addPrice = find.text(lang == 'bn' ? 'দাম যোগ করুন' : 'Add price');
+      // Below the AI card on a phone this small, and the list only builds what's near.
+      for (var i = 0; i < 12 && addPrice.evaluate().isEmpty; i++) {
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -300), warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.ensureVisible(addPrice.first);
+      await tester.pumpAndSettle();
+      var error = tester.takeException();
+      if (error is FlutterError) debugPrint(error.toStringDeep());
+      expect(error, isNull, reason: 'the ledger with Add price');
+      await tester.tap(addPrice.first);
+      await tester.pumpAndSettle();
+      expect(find.byType(PriceSheet), findsOneWidget);
+      await tester.drag(find.descendant(of: find.byType(PriceSheet), matching: find.byType(Scrollable)).first, const Offset(0, -300), warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 50));
+      error = tester.takeException();
+      if (error is FlutterError) debugPrint(error.toStringDeep());
+      expect(error, isNull, reason: 'the sheet');
+    });
+
+    testWidgets("the question about a bought item's expense fits a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {
+      await setAppLang(lang);
+      await _phone(tester);
+      final app = _app()
+        ..boards = [const Board(id: 'l', name: 'Groceries', kind: BoardKind.shopping, sort: 0)]
+        ..boardColumns = [
+          const BoardColumn(id: 'a', boardId: 'l', name: 'To buy', sort: 0),
+          const BoardColumn(id: 'b', boardId: 'l', name: 'Bought', sort: 1),
+        ]
+        ..tickets = [const Ticket(id: 't', boardId: 'l', columnId: 'b', number: 1, title: 'Milk', description: '', priority: TicketPriority.medium, dueOn: null, amount: 120, sort: 1)]
+        ..transactions = [
+          Txn.fromRow({'id': 'x', 'kind': 'expense', 'amount': 120, 'category_name': 'Groceries', 'note': 'Milk', 'occurred_on': _day(0), 'occurred_at': '${_day(0)}T08:00:00Z', 'ticket_id': 't'}),
+        ];
+      await tester.pumpWidget(_host(app, Builder(builder: (c) => TextButton(onPressed: () => placeAsking(c, 't', 'a', ['t']), child: const Text('move')))));
+      await tester.tap(find.text('move'));
+      await tester.pumpAndSettle();
+      final error = tester.takeException();
+      if (error is FlutterError) debugPrint(error.toStringDeep());
+      expect(error, isNull);
+      expect(find.byType(AlertDialog), findsOneWidget);
     });
 
     testWidgets("the login screen fits a small phone (${lang == 'bn' ? 'Bangla' : 'English'})", (tester) async {

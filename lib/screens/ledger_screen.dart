@@ -18,6 +18,7 @@ import '../util/range.dart';
 import '../widgets/ai_insights.dart';
 import '../widgets/ui.dart';
 import 'entry_sheet.dart';
+import 'price_sheet.dart';
 
 enum _Period { all, day, week, month, year, custom }
 
@@ -435,13 +436,32 @@ class _DayGroup extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Icon(t.kind == Kind.income ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight,
-                      size: 14, color: t.kind == Kind.income ? p.income : p.expense),
-                  const SizedBox(width: 6),
-                  Text(
-                    formatCurrency(t.kind == Kind.income ? t.amount : -t.amount, sign: true),
-                    style: monoStyle(p, 14, color: t.kind == Kind.income ? p.income : p.muted(0.8)),
-                  ),
+                  if (needsPrice(t))
+                    // Capped, so it never squeezes the entry's name away on a small phone.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 92),
+                      child: HairlineButton(
+                        height: 32,
+                        radius: 8,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        borderColor: p.accentA(0.4),
+                        fill: p.accentA(0.08),
+                        onPressed: () => openPriceSheet(context),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(tr('Add price'), maxLines: 1, style: bodyStyle(p, 12, weight: FontWeight.w600, color: p.accent)),
+                        ),
+                      ),
+                    )
+                  else ...[
+                    Icon(t.kind == Kind.income ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight,
+                        size: 14, color: t.kind == Kind.income ? p.income : p.expense),
+                    const SizedBox(width: 6),
+                    Text(
+                      formatCurrency(t.kind == Kind.income ? t.amount : -t.amount, sign: true),
+                      style: monoStyle(p, 14, color: t.kind == Kind.income ? p.income : p.muted(0.8)),
+                    ),
+                  ],
                   const SizedBox(width: 2),
                   IconButton(
                     tooltip: tr('Edit'),

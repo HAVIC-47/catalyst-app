@@ -80,6 +80,20 @@ class Repo {
 
   static Future<void> deleteTransaction(String id) => _db.from('transactions').delete().eq('id', id);
 
+  /// Logs a to-buy item that was marked as bought. Null when it's already in the
+  /// ledger — the database keeps one expense per item, whoever logs it first.
+  static Future<Txn?> logBought(String ticketId, NewTxn t) async {
+    try {
+      return Txn.fromRow(await _db.from('transactions').insert({...t.toRow(), 'ticket_id': ticketId}).select().single());
+    } on PostgrestException catch (e) {
+      if (e.code == '23505') return null;
+      rethrow;
+    }
+  }
+
+  /// The expense stays, but no longer belongs to the item it was logged for.
+  static Future<void> unlinkTicket(String id) => _db.from('transactions').update({'ticket_id': null}).eq('id', id);
+
   // ---- moods
   static Future<List<MoodLog>> listMoods() async {
     final rows = await _db.from('mood_logs').select().order('created_at', ascending: false);

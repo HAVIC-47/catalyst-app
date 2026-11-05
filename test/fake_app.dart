@@ -4,8 +4,10 @@ import 'dart:convert';
 
 import 'package:catalyst/data/app_state.dart';
 import 'package:catalyst/models.dart';
+import 'package:catalyst/screens/shell.dart';
 import 'package:catalyst/theme/app_theme.dart';
 import 'package:catalyst/theme/palette.dart';
+import 'package:catalyst/theme/theme_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -133,6 +135,15 @@ Widget host(AppState app, Widget child) => ChangeNotifierProvider<AppState>.valu
       value: app,
       child: MaterialApp(theme: buildTheme(Palette.night), home: Scaffold(body: child)),
     );
+
+/// The whole app shell around [app].
+Future<Widget> shellFor(AppState app) async {
+  final theme = await ThemeController.load();
+  return MultiProvider(
+    providers: [ChangeNotifierProvider.value(value: theme), ChangeNotifierProvider<AppState>.value(value: app)],
+    child: MaterialApp(theme: buildTheme(Palette.night), home: const AppShell()),
+  );
+}
 
 /// A 1×1 PNG — enough for the scanners, whose readers are faked.
 final png = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');

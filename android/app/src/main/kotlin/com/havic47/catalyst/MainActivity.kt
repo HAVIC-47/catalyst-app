@@ -1,6 +1,7 @@
 package com.havic47.catalyst
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -12,7 +13,8 @@ import io.flutter.plugin.common.MethodChannel
 //   SMS permission and reads nothing else; it's parsed on the phone.
 // - catalyst/widget: the home-screen widgets' figures (Widgets.kt), and a widget
 //   tap handed to the app: "add", "open:<section>" or "mood:<1-5>". Also the
-//   phone's timezone ("Asia/Dhaka"), which recurring entries keep their time in.
+//   phone's timezone ("Asia/Dhaka"), which recurring entries keep their time in,
+//   and its name ("Samsung SM-S918B"), for Settings → Account → Signed-in devices.
 class MainActivity : FlutterActivity() {
     private var smsChannel: MethodChannel? = null
     private var widgetChannel: MethodChannel? = null
@@ -57,6 +59,7 @@ class MainActivity : FlutterActivity() {
                         launchAction = null
                     }
                     "timezone" -> result.success(java.util.TimeZone.getDefault().id)
+                    "deviceName" -> result.success(deviceName())
                     else -> result.notImplemented()
                 }
             }
@@ -78,6 +81,13 @@ class MainActivity : FlutterActivity() {
             Widgets.ACTION_MOOD -> target?.let { "mood:$it" }
             else -> null
         }
+    }
+
+    /** The maker and model: "Samsung SM-S918B" — just the model when it already starts with the maker ("Xiaomi 13"). */
+    private fun deviceName(): String {
+        val maker = Build.MANUFACTURER.orEmpty().replaceFirstChar { it.uppercase() }
+        val model = Build.MODEL.orEmpty()
+        return if (model.startsWith(maker, ignoreCase = true)) model else "$maker $model".trim()
     }
 
     /** The text shared to the app (Share → Catalyst), when this intent carries some. */

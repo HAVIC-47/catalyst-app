@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config.dart';
 import '../data/app_state.dart';
+import '../data/devices.dart';
 import '../data/remember.dart';
 import '../theme/app_theme.dart';
 import '../theme/palette.dart';
@@ -39,6 +40,10 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   void initState() {
     super.initState();
+    if (Devices.removedHere) {
+      Devices.removedHere = false;
+      _notice = tr('You were signed out of this device.');
+    }
     RememberMe.isOn().then((on) {
       if (mounted) setState(() => _remember = on);
     });

@@ -3,7 +3,7 @@
 // off — both shared with the web through user metadata), dashboard sections (on
 // or off, and their order), categories (icons, colors, order), pasting a bKash /
 // Nagad message, About the app (version, updates, every feature, what's new) and
-// the account (password, erasing the data, deleting the account).
+// the account (password, signed-in devices, erasing the data, deleting the account).
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -13,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config.dart';
 import '../data/account.dart';
 import '../data/app_state.dart';
+import '../data/devices.dart';
 import '../data/offline.dart';
 import '../models.dart';
 import '../services/notifications.dart';
@@ -628,6 +629,12 @@ class _AlertsSection extends StatelessWidget {
           label: tr('Challenges'),
           hint: tr('Won, missed, or on its last day'),
         ),
+        _SwitchRow(
+          on: r.prices,
+          onChanged: (v) => app.setReminders(r.copyWith(prices: v)),
+          label: tr('Prices to add'),
+          hint: tr('When something you marked as bought has no price yet'),
+        ),
         // Google Play updates its build itself, with its own notice.
         if (!playStore)
           _SwitchRow(
@@ -791,6 +798,148 @@ class _PasswordChangeState extends State<_PasswordChange> {
             ),
           ),
         ]),
+      ]),
+    );
+  }
+}
+
+/// Everywhere this account is signed in. Remove any one of them, or sign out of all
+/// of them (Supabase's own, so it works whatever the list can show).
+class _Devices extends StatefulWidget {
+  const _Devices();
+
+  @override
+  State<_Devices> createState() => _DevicesState();
+}
+
+class _DevicesState extends State<_Devices> {
+  List<DeviceLogin>? _list;
+  String? _problem;
+  String? _busy; // the login being removed, or 'all'
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (_problem != null) setState(() => _problem = null);
+    try {
+      // Named first, so this phone's row never shows as unknown (a password change starts a new login).
+      await Devices.touch();
+      final list = await Devices.list();
+      if (mounted) setState(() => _list = list);
+    } catch (e) {
+      debugPrint('[catalyst] could not list devices: $e');
+      final old = RegExp('my_devices|touch_device|schema cache|does not exist', caseSensitive: false).hasMatch('$e');
+      if (mounted) setState(() => _problem = old ? tr('This list needs the database update — run db/supabase.sql.') : tr("Couldn't load your devices."));
+    }
+  }
+
+  Future<void> _remove(DeviceLogin d) async {
+    if (_busy != null || !await confirm(context, tr('Sign out of {name}? It will have to log in again.', {'name': d.label}), action: tr('Remove'))) return;
+    if (!mounted) return;
+    setState(() => _busy = d.id);
+    try {
+      await Devices.remove(d.id);
+      if (mounted) setState(() => _list = _list?.where((x) => x.id != d.id).toList());
+    } catch (e) {
+      debugPrint('[catalyst] could not remove a device: $e');
+      if (mounted) showError(context, tr("Couldn't remove {name} — try again.", {'name': d.label}));
+    } finally {
+      if (mounted) setState(() => _busy = null);
+    }
+  }
+
+  /// [all]: every device; otherwise just this one. Either way the app goes back to the login screen.
+  Future<void> _leave({required bool all}) async {
+    final app = context.read<AppState>();
+    if (_busy != null) return;
+    if (all && !await confirm(context, tr('Sign out of all devices, including this one?'), action: tr('Sign out'))) return;
+    if (!mounted) return;
+    setState(() => _busy = all ? 'all' : 'here');
+    try {
+      await (all ? app.signOutEverywhere() : app.signOut());
+    } catch (e) {
+      debugPrint('[catalyst] could not sign out: $e');
+      if (mounted) {
+        showError(context, tr("Couldn't sign out — check your connection and try again."));
+        setState(() => _busy = null);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final list = _list;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(tr('Signed-in devices'), style: bodyStyle(p, 14, color: p.muted(0.8))),
+        const SizedBox(height: 2),
+        Text(
+          tr("Everywhere your account is signed in. If you don't recognise one, remove it and change your password."),
+          style: bodyStyle(p, 11.5, color: p.muted(0.45), height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        if (_problem != null)
+          Row(children: [
+            Expanded(child: Text(_problem!, style: bodyStyle(p, 12.5, color: p.muted(0.55), height: 1.4))),
+            TextButton(onPressed: _load, child: Text(tr('Try again'), style: bodyStyle(p, 13, color: p.accent))),
+          ])
+        else if (list == null)
+          Text(tr('Loading…'), style: monoStyle(p, 12, color: p.muted(0.35)))
+        else
+          for (final (i, d) in list.indexed)
+            Container(
+              decoration: BoxDecoration(border: i == 0 ? null : Border(top: BorderSide(color: p.line))),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(children: [
+                Icon(d.onPhone ? LucideIcons.smartphone : LucideIcons.monitor, size: 17, color: p.muted(0.45)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                      Text(d.label, style: bodyStyle(p, 14, color: p.muted(0.85))),
+                      if (d.current)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                          decoration: BoxDecoration(color: p.accentA(0.1), borderRadius: BorderRadius.circular(99)),
+                          child: Text(tr('This device'), style: bodyStyle(p, 10.5, weight: FontWeight.w600, color: p.accent)),
+                        ),
+                    ]),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${d.current ? tr('Active now') : tr('Last active {date}', {'date': fmt(d.lastSeen, 'MMM d, h:mm a')})} · ${tr('Signed in {date}', {'date': fmt(d.signedInAt, 'MMM d, yyyy')})}',
+                      style: bodyStyle(p, 11.5, color: p.muted(0.45), height: 1.35),
+                    ),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                HairlineButton(
+                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  onPressed: _busy != null ? null : () => d.current ? _leave(all: false) : _remove(d),
+                  child: Text(d.current ? tr('Sign out') : tr('Remove'), style: bodyStyle(p, 12.5, color: p.muted(0.75))),
+                ),
+              ]),
+            ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: HairlineButton(
+            height: 40,
+            onPressed: _busy != null ? null : () => _leave(all: true),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(LucideIcons.logOut, size: 15, color: p.muted(0.7)),
+              const SizedBox(width: 8),
+              Flexible(child: Text(tr('Sign out of all devices'), style: bodyStyle(p, 13.5, color: p.muted(0.8)))),
+            ]),
+          ),
+        ),
       ]),
     );
   }
@@ -969,6 +1118,8 @@ class _AccountSectionState extends State<_AccountSection> {
         ),
         const SizedBox(height: 14),
         const _PasswordChange(),
+        const SizedBox(height: 14),
+        const _Devices(),
         const SizedBox(height: 14),
         const _EraseData(),
         const SizedBox(height: 14),

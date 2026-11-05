@@ -803,7 +803,9 @@ class TxnEditSheet extends StatefulWidget {
 
 class _TxnEditSheetState extends State<TxnEditSheet> {
   late Kind _kind = widget.txn.kind;
-  late final _amount = TextEditingController(text: groupNumber(widget.txn.amount));
+  // No price yet (a bought item): the field stays empty, and it can be saved like that.
+  late final bool _priceless = widget.txn.amount == 0;
+  late final _amount = TextEditingController(text: _priceless ? '' : groupNumber(widget.txn.amount));
   late final _place = TextEditingController(text: widget.txn.place);
   late final _note = TextEditingController(text: widget.txn.note);
   String? _pick; // category id chosen here; null = the entry's own
@@ -910,7 +912,7 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
                     ? (near.id, near.name)
                     : null;
 
-    final value = parseAmount(_amount.text);
+    final value = _priceless && _amount.text.trim().isEmpty ? 0.0 : parseAmount(_amount.text);
     final touchedWhen = _date != t.occurredOn || _time != _savedTime;
     final next = value == null || cat == null
         ? null

@@ -93,6 +93,7 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   bool _recovering = false;
+  bool _signedIn = false;
 
   @override
   Widget build(BuildContext context) {
@@ -107,13 +108,21 @@ class _AuthGateState extends State<AuthGate> {
         }
         final session = auth.currentSession;
         if (session == null) {
+          final leaving = _signedIn;
+          _signedIn = false;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) context.read<AppState>().reset();
+            if (context.mounted) {
+              context.read<AppState>().reset();
+              // Whatever was open on top of the app (a Settings page, a sheet) goes
+              // with the session — it may have ended from another device.
+              if (leaving) Navigator.of(context).popUntil((r) => r.isFirst);
+            }
             Notifications.clear();
             HomeWidget.signedOut();
           });
           return const AuthScreen();
         }
+        _signedIn = true;
         if (_recovering) return NewPasswordScreen(onDone: () => setState(() => _recovering = false));
         return const AppShell();
       },

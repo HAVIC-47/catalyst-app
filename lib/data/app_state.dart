@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthException, SignOutScope, Supabase;
 
 import '../config.dart';
 import '../models.dart';
@@ -16,6 +16,7 @@ import '../util/i18n.dart';
 import '../util/money.dart';
 import '../util/recurring.dart';
 import '../util/zakat.dart';
+import 'devices.dart';
 import 'money_db.dart';
 import 'offline.dart';
 import 'repo.dart';
@@ -49,6 +50,7 @@ class ReminderPrefs {
     this.moodSpend = true,
     this.streaks = true,
     this.challenges = true,
+    this.prices = true,
     this.updates = true,
   });
 
@@ -61,12 +63,13 @@ class ReminderPrefs {
   final bool moodSpend; // a lot spent on a low-mood day
   final bool streaks; // streak milestones, and a streak about to end
   final bool challenges; // a challenge won, missed, or on its last day
+  final bool prices; // something marked as bought still has no price
   final bool updates; // a new version of the app (not a kind in the Google Play build, which Play updates)
 
   /// How many kinds are on, of all of them (the check-in time isn't a kind).
   int get onCount =>
-      [checkin, bills, budgets, dhar, recurring, moodSpend, streaks, challenges, if (!playStore) updates].where((on) => on).length;
-  static const kinds = playStore ? 8 : 9;
+      [checkin, bills, budgets, dhar, recurring, moodSpend, streaks, challenges, prices, if (!playStore) updates].where((on) => on).length;
+  static const kinds = playStore ? 9 : 10;
 
   factory ReminderPrefs.fromJson(Object? raw) {
     final r = raw is Map ? raw : const {};
@@ -82,6 +85,7 @@ class ReminderPrefs {
       moodSpend: flag('moodSpend'),
       streaks: flag('streaks'),
       challenges: flag('challenges'),
+      prices: flag('prices'),
       updates: flag('updates'),
     );
   }
@@ -96,6 +100,7 @@ class ReminderPrefs {
         'moodSpend': moodSpend,
         'streaks': streaks,
         'challenges': challenges,
+        'prices': prices,
         'updates': updates,
       };
 
@@ -109,6 +114,7 @@ class ReminderPrefs {
     bool? moodSpend,
     bool? streaks,
     bool? challenges,
+    bool? prices,
     bool? updates,
   }) =>
       ReminderPrefs(
@@ -121,6 +127,7 @@ class ReminderPrefs {
         moodSpend: moodSpend ?? this.moodSpend,
         streaks: streaks ?? this.streaks,
         challenges: challenges ?? this.challenges,
+        prices: prices ?? this.prices,
         updates: updates ?? this.updates,
       );
 }
@@ -204,6 +211,7 @@ class AppState extends ChangeNotifier {
   DateTime? offlineSince;
   Timer? _retry;
   Timer? _recurringTick; // while the app is open, a recurring entry due now is logged within a minute
+  Timer? _sessionTick; // while the app is open, a login removed from another device ends within a couple of minutes
   final Set<String> _offlineFails = {};
 
   /// Entries and moods made offline, still waiting to be sent.
@@ -260,6 +268,8 @@ class AppState extends ChangeNotifier {
   /// (Re)load every collection — each one independently, so one missing table
   /// degrades gracefully instead of breaking the whole app.
   Future<void> load() async {
+    unawaited(_lookAfterLogin());
+    _sessionTick ??= Timer.periodic(const Duration(minutes: 2), (_) => checkSession());
     final prefs = await SharedPreferences.getInstance();
     vaultMode = prefs.getBool('vaultMode') ?? false;
     currency = setCurrency(prefs.getString('currency') ?? currency).code;
@@ -421,7 +431,7 @@ class AppState extends ChangeNotifier {
 
   /// An entry as the phone knows it before the server has it.
   Txn _localTxn(String id, Map<String, dynamic> row, {Txn? was}) =>
-      Txn.fromRow({'wallet_id': was?.walletId, ...row, 'id': id, 'created_at': was?.createdAt ?? _nowIso()});
+      Txn.fromRow({'wallet_id': was?.walletId, 'ticket_id': was?.ticketId, ...row, 'id': id, 'created_at': was?.createdAt ?? _nowIso()});
 
   /// Put the outbox's changes over the lists (they aren't on the server yet).
   void _applyOutbox() {
@@ -494,6 +504,40 @@ class AppState extends ChangeNotifier {
     await Supabase.instance.client.auth.signOut();
   }
 
+  /// Everywhere: every other login first, because that's the step that fails with
+  /// no connection — then nothing has changed — and then this one.
+  Future<void> signOutEverywhere() async {
+    await Supabase.instance.client.auth.signOut(scope: SignOutScope.others);
+    await signOut();
+  }
+
+  /// Still signed in? Another device can remove this login (Settings → Account): its
+  /// token keeps opening the database for a while, but Supabase's own answer is
+  /// final. No connection isn't an answer.
+  Future<void> checkSession() async {
+    try {
+      final auth = Supabase.instance.client.auth;
+      if (auth.currentSession == null) return;
+      await auth.getUser();
+    } on AuthException catch (e) {
+      if (e.code != 'session_not_found') return;
+      Devices.removedHere = true;
+      await signOut().catchError((Object e) => debugPrint('[catalyst] could not finish signing out: $e'));
+    } catch (e) {
+      debugPrint('[catalyst] could not check the login: $e');
+    }
+  }
+
+  /// Still signed in, and on Settings → Account's list under this phone's name.
+  Future<void> _lookAfterLogin() async {
+    await checkSession();
+    try {
+      await Devices.touch();
+    } catch (e) {
+      debugPrint('[catalyst] could not update this device: $e'); // before the database update, there's no list to be on
+    }
+  }
+
   /// After "Erase my data" (the server has deleted every entry): the phone's
   /// copies go too — the saved copy, changes waiting to be sent, the zakat
   /// figures, the notes about alerts already shown — then a fresh load, which
@@ -555,6 +599,8 @@ class AppState extends ChangeNotifier {
     _stopRetry();
     _recurringTick?.cancel();
     _recurringTick = null;
+    _sessionTick?.cancel();
+    _sessionTick = null;
     selectedBoards.clear();
     dashboardHidden = null;
     _dashboardTouched = false;
@@ -735,7 +781,7 @@ class AppState extends ChangeNotifier {
       c = _localTxn(id, t.toRow(), was: was);
     } else {
       try {
-        c = await Repo.updateTransaction(id, t);
+        c = await db.updateTransaction(id, t);
       } catch (e) {
         if (!isOffline(e)) rethrow;
         await Outbox.instance.edit(id, t.toRow());
@@ -747,6 +793,21 @@ class AppState extends ChangeNotifier {
     transactions = [for (final x in transactions) x.id == id ? c : x]..sort(newestFirst);
     notifyListeners();
     if (c.kind == Kind.expense) checkBudgets(before);
+    // A bought item's price follows its expense.
+    final ticket = c.kind == Kind.expense && c.ticketId != null ? tickets.where((x) => x.id == c.ticketId).firstOrNull : null;
+    if (ticket != null && (ticket.amount ?? 0) != c.amount) {
+      final amount = c.amount > 0 ? c.amount : null;
+      try {
+        await db.updateTicket(ticket.id, {'amount': amount});
+        tickets = [
+          for (final x in tickets)
+            x.id == ticket.id ? x.edited(title: x.title, description: x.description, priority: x.priority, dueOn: x.dueOn, amount: amount) : x,
+        ];
+        notifyListeners();
+      } catch (e) {
+        debugPrint('[catalyst] could not update the bought item\'s price: $e');
+      }
+    }
   }
 
   Future<void> removeMoney(String id) async {
@@ -754,7 +815,7 @@ class AppState extends ChangeNotifier {
       await Outbox.instance.delete(id);
     } else {
       try {
-        await Repo.deleteTransaction(id);
+        await db.deleteTransaction(id);
       } catch (e) {
         if (!isOffline(e)) rethrow;
         await Outbox.instance.delete(id);
@@ -1506,7 +1567,7 @@ class AppState extends ChangeNotifier {
     if (col == null) throw Exception(tr('That column no longer exists.'));
     final inBoard = tickets.where((t) => t.boardId == col.boardId);
     final lastSort = inBoard.where((t) => t.columnId == columnId).fold<double>(0, (m, t) => t.sort > m ? t.sort : m);
-    final t = await Repo.addTicket({
+    final t = await db.addTicket({
       'board_id': col.boardId,
       'column_id': columnId,
       'number': inBoard.fold<int>(0, (m, x) => x.number > m ? x.number : m) + 1,
@@ -1515,18 +1576,21 @@ class AppState extends ChangeNotifier {
     });
     tickets = [...tickets, t];
     notifyListeners();
+    // Added straight to Bought: it's bought.
+    if (columnId == boughtColumn(col.boardId)) await _logBought(t);
     return t;
   }
 
   /// Saves a ticket's editable fields (title, notes, priority, due date, price).
   Future<void> saveTicket(Ticket t) async {
-    await Repo.updateTicket(t.id, {
+    await db.updateTicket(t.id, {
       'title': t.title,
       'description': t.description,
       'priority': t.priority.name,
       'due_on': t.dueOn,
       'amount': t.amount,
     });
+    final was = tickets.where((x) => x.id == t.id).firstOrNull;
     tickets = [
       for (final x in tickets)
         x.id == t.id
@@ -1534,12 +1598,21 @@ class AppState extends ChangeNotifier {
             : x,
     ];
     notifyListeners();
+    // Its expense follows: a new price, and a new title while the note still says the old one.
+    final expense = expenseOfTicket(t.id);
+    if (expense == null || was == null) return;
+    final amount = t.amount ?? 0;
+    final note = expense.note == was.title ? t.title : expense.note;
+    if (amount != expense.amount || note != expense.note) await editMoney(expense.id, expense.edited(amount: amount, note: note));
   }
 
-  /// Puts a ticket in [columnId] where it sits in [order] (that column's ids, top to bottom).
+  /// Puts a ticket in [columnId] where it sits in [order] (that column's ids, top to
+  /// bottom). On a to-buy list, into Bought logs today's expense. (Back out of it,
+  /// the boards screen asks about that expense first: placeAsking.)
   Future<void> placeTicket(String id, String columnId, List<String> order) async {
     final i = order.indexOf(id);
     if (i < 0) return;
+    final was = tickets.where((t) => t.id == id).firstOrNull;
     final sortOf = {for (final t in tickets) t.id: t.sort};
     final between = sortBetween(i > 0 ? sortOf[order[i - 1]] : null, i < order.length - 1 ? sortOf[order[i + 1]] : null);
     // Usually one row changes; when neighbours are too close, renumber the column.
@@ -1553,7 +1626,7 @@ class AppState extends ChangeNotifier {
     try {
       await Future.wait([
         for (final e in moves.entries)
-          Repo.updateTicket(e.key, {'sort': e.value, if (e.key == id) 'column_id': columnId}),
+          db.updateTicket(e.key, {'sort': e.value, if (e.key == id) 'column_id': columnId}),
       ]);
     } catch (e) {
       debugPrint('[catalyst] could not move the ticket: $e');
@@ -1561,6 +1634,95 @@ class AppState extends ChangeNotifier {
       tickets = await _safe(Repo.listTickets, tickets, 'tickets');
       notifyListeners();
       rethrow;
+    }
+    if (was != null && was.columnId != columnId && columnId == boughtColumn(was.boardId)) await _logBought(was);
+  }
+
+  // ---- to-buy items and their expenses
+
+  /// Where an item on [boardId] counts as bought: a to-buy list's last column, the one
+  /// its cards are struck through in. Null for to-do boards and one-column lists.
+  String? boughtColumn(String boardId) {
+    if (boards.where((b) => b.id == boardId).firstOrNull?.kind != BoardKind.shopping) return null;
+    final cols = columnsOf(boardId);
+    return cols.length > 1 ? cols.last.id : null;
+  }
+
+  Txn? expenseOfTicket(String ticketId) => transactions.where((t) => t.ticketId == ticketId).firstOrNull;
+
+  /// The expense to ask about before [ticketId] moves to [columnId]: only when a
+  /// bought item is on its way back, and null when there's nothing to ask.
+  Txn? expenseLeaving(String ticketId, String columnId) {
+    final t = tickets.where((x) => x.id == ticketId).firstOrNull;
+    if (t == null || t.columnId == columnId || columnId == boughtColumn(t.boardId)) return null;
+    return expenseOfTicket(ticketId);
+  }
+
+  /// Expenses still waiting for a price, newest first.
+  List<Txn> get needPrice => transactions.where(needsPrice).toList();
+
+  /// A to-buy item went to Bought: it joins today's expenses — at its price, or with
+  /// none yet and a nudge to add it. Once per item, whichever device gets there first.
+  Future<void> _logBought(Ticket t) async {
+    if (expenseOfTicket(t.id) != null) return;
+    final list = boards.where((b) => b.id == t.boardId).firstOrNull;
+    final cat = boughtCategory(list?.name ?? '', categories);
+    final today = toDateKey(DateTime.now());
+    final price = t.amount ?? 0;
+    Txn? entry;
+    try {
+      entry = await db.logBought(
+        t.id,
+        NewTxn(
+          kind: Kind.expense,
+          amount: price,
+          categoryId: cat?.id,
+          categoryName: cat?.name ?? 'Other',
+          note: t.title,
+          occurredOn: today,
+          occurredAt: combineDateTime(today, nowTime()),
+          walletId: walletsReady ? defaultWallet(wallets)?.id : null,
+        ),
+      );
+    } catch (e) {
+      debugPrint('[catalyst] could not log the bought item: $e');
+      // Before the database update (db/supabase.sql) Bought is still just a column.
+      if (!'$e'.contains('ticket_id')) notices.add(tr("{name} is marked as bought, but couldn't be added to your expenses.", {'name': t.title}));
+      return;
+    }
+    if (entry == null) {
+      // Another device logged it first: pick that up.
+      transactions = await _safe(Repo.listTransactions, transactions, 'transactions');
+      notifyListeners();
+      return;
+    }
+    final before = transactions;
+    transactions = [entry, ...transactions]..sort(newestFirst);
+    notifyListeners();
+    unawaited(checkBudgets(before));
+    unawaited(checkMoodSpend());
+    if (price > 0) {
+      notices.add(tr("{name} added to today's expenses — {amount}.", {'name': t.title, 'amount': formatCurrency(price)}));
+    } else if (reminders.prices) {
+      alerts.add(AppAlert(tr('Add a price'), tr("{name} added to today's expenses with no price yet.", {'name': t.title}), target: 'prices'));
+    } else {
+      notices.add(tr("{name} added to today's expenses with no price yet.", {'name': t.title}));
+    }
+  }
+
+  /// "Keep expense": it stays in the ledger as an ordinary entry, and buying the item
+  /// again logs a new one.
+  Future<void> unlinkExpense(String id) async {
+    await db.unlinkTicket(id);
+    transactions = [for (final t in transactions) t.id == id ? t.withoutTicket() : t];
+    notifyListeners();
+  }
+
+  /// Prices for expenses logged without one; each bought item's price follows.
+  Future<void> setPrices(List<(String, double)> prices) async {
+    for (final (id, amount) in prices) {
+      final t = transactions.where((x) => x.id == id).firstOrNull;
+      if (t != null) await editMoney(id, t.edited(amount: amount));
     }
   }
 
@@ -1573,7 +1735,7 @@ class AppState extends ChangeNotifier {
   /// Adds a batch (a scanned list) to [boardId] in one insert — see [newTicketRows].
   Future<List<Ticket>> createTickets(String boardId, List<NewTicket> drafts) async {
     if (drafts.isEmpty) return [];
-    final made = await Repo.addTickets(newTicketRows(boardId, drafts, tickets));
+    final made = await db.addTickets(newTicketRows(boardId, drafts, tickets));
     tickets = [...tickets, ...made];
     notifyListeners();
     return made;

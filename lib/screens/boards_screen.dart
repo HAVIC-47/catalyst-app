@@ -3,6 +3,8 @@
 // drag it within or across columns (the board and page scroll when you hold it
 // near an edge); tap it to edit. The + in the bottom bar adds a whole list from a
 // screenshot (list_scan_sheet.dart), and an AI summary sits under the title.
+// On a to-buy list, an item reaching the last column joins today's expenses
+// (AppState), and moving it back asks about that expense first (placeAsking).
 // Same tables as the web, so both stay in sync.
 import 'dart:async';
 import 'dart:math' as math;
@@ -79,6 +81,50 @@ String boardError(Object e) {
     return tr("Boards aren't set up yet — run db/supabase.sql in Supabase.");
   }
   return msg;
+}
+
+enum _Unbuy { remove, keep }
+
+/// Moves a ticket (see AppState.placeTicket). A bought item on its way back asks what
+/// to do with its expense first, and Cancel leaves everything where it was.
+Future<void> placeAsking(BuildContext context, String id, String columnId, List<String> order) async {
+  final app = context.read<AppState>();
+  final expense = app.expenseLeaving(id, columnId);
+  if (expense == null) return app.placeTicket(id, columnId, order);
+  final p = Palette.of(context);
+  final title = app.tickets.where((t) => t.id == id).firstOrNull?.title ?? '';
+  final name = expense.note.isEmpty ? title : expense.note;
+  final date = fmt(fromDateKey(expense.occurredOn), 'MMM d');
+  final column = app.boardColumns.where((c) => c.id == columnId).firstOrNull?.name ?? '';
+  final choice = await showDialog<_Unbuy>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: Text(tr('Remove it from your expenses too?'), style: displayStyle(p, 22)),
+      content: Text(
+        '${expense.amount > 0 ? tr('{name} is in your expenses for {date} — {amount}.', {'name': name, 'date': date, 'amount': formatCurrency(expense.amount)}) : tr('{name} is in your expenses for {date}, with no price yet.', {'name': name, 'date': date})} '
+        '${tr("It's going back to {column}.", {'column': column})}',
+        style: bodyStyle(p, 14, color: p.muted(0.7), height: 1.5),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('Cancel'), style: TextStyle(color: p.muted(0.6)))),
+        TextButton(onPressed: () => Navigator.pop(c, _Unbuy.keep), child: Text(tr('Keep expense'), style: TextStyle(color: p.muted(0.8)))),
+        TextButton(onPressed: () => Navigator.pop(c, _Unbuy.remove), child: Text(tr('Remove expense'), style: TextStyle(color: p.expense))),
+      ],
+    ),
+  );
+  if (choice == null) return;
+  await app.placeTicket(id, columnId, order);
+  try {
+    if (choice == _Unbuy.remove) {
+      await app.removeMoney(expense.id);
+      app.notices.add(tr('{name} is off your expenses.', {'name': name}));
+    } else {
+      await app.unlinkExpense(expense.id);
+    }
+  } catch (e) {
+    debugPrint('[catalyst] could not change the bought item\'s expense: $e');
+    app.notices.add(tr("{name} moved, but its expense couldn't be changed — check it in the ledger.", {'name': name}));
+  }
 }
 
 const _gap = 12.0; // between columns
@@ -261,7 +307,7 @@ class _BoardsScreenState extends State<BoardsScreen> {
     if (ticket.columnId == columnId && old == i) return; // dropped where it started
     order.insert(i, id);
     try {
-      await app.placeTicket(id, columnId, order);
+      await placeAsking(context, id, columnId, order);
     } catch (_) {
       if (mounted) showError(context, tr("Couldn't move it — try again."));
     }
@@ -1232,9 +1278,9 @@ class _TicketSheetState extends State<_TicketSheet> {
         dueOn: _due == null ? null : toDateKey(_due!),
         amount: kind == BoardKind.shopping ? price : t.amount,
       ));
-      if (_columnId != t.columnId) {
+      if (_columnId != t.columnId && mounted) {
         final order = app.ticketsIn(_columnId).map((x) => x.id).toList()..add(t.id);
-        await app.placeTicket(t.id, _columnId, order);
+        await placeAsking(context, t.id, _columnId, order);
       }
       if (mounted) Navigator.pop(context);
     } catch (e) {
