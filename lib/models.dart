@@ -654,9 +654,27 @@ class Debt {
         createdAt: (r['created_at'] as String?) ?? '',
       );
 
-  Debt copyWith({bool? closed}) => Debt(
-      id: id, person: person, direction: direction, amount: amount, note: note, walletId: walletId,
-      occurredOn: occurredOn, dueOn: dueOn, closed: closed ?? this.closed, createdAt: createdAt);
+  Debt copyWith({
+    bool? closed,
+    String? person,
+    DebtDirection? direction,
+    double? amount,
+    String? note,
+    String? Function()? walletId,
+    String? occurredOn,
+    String? Function()? dueOn,
+  }) =>
+      Debt(
+          id: id,
+          person: person ?? this.person,
+          direction: direction ?? this.direction,
+          amount: amount ?? this.amount,
+          note: note ?? this.note,
+          walletId: walletId != null ? walletId() : this.walletId,
+          occurredOn: occurredOn ?? this.occurredOn,
+          dueOn: dueOn != null ? dueOn() : this.dueOn,
+          closed: closed ?? this.closed,
+          createdAt: createdAt);
 }
 
 class DebtPayment {

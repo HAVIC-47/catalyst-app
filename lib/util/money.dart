@@ -150,3 +150,57 @@ Category? ruleCategory(RecurringRule rule, List<Category> categories) {
       .fold<double>(0, (s, t) => s + t.amount);
   return (spent: _cents(spent), ratio: budget.amount > 0 ? spent / budget.amount : 0);
 }
+
+/// How a dhar movement came about.
+enum DharMoveKind { borrowed, lent, repaid, paidBack }
+
+/// One movement of money from dhar: the loan itself or a payment on it.
+class DharMove {
+  const DharMove({required this.id, required this.debtId, required this.date, required this.person, required this.walletId, required this.amount, required this.kind});
+
+  final String id;
+  final String debtId;
+  final String date;
+  final String person;
+  final String? walletId;
+
+  /// + came into a wallet (borrowed, or a lent amount paid back), − went out.
+  final double amount;
+  final DharMoveKind kind;
+
+  String get label => switch (kind) {
+        DharMoveKind.borrowed => tr('Borrowed from {person}', {'person': person}),
+        DharMoveKind.lent => tr('Lent to {person}', {'person': person}),
+        DharMoveKind.repaid => tr('Paid back {person}', {'person': person}),
+        DharMoveKind.paidBack => tr('{person} paid back', {'person': person}),
+      };
+}
+
+/// Dhar as ledger lines: borrowing adds to the wallet, paying it back takes it
+/// off; lending takes it off, getting it back adds it. Not income or spending.
+List<DharMove> dharMoves(List<Debt> debts, List<DebtPayment> payments) {
+  final byId = {for (final d in debts) d.id: d};
+  return [
+    for (final d in debts)
+      DharMove(
+        id: 'debt:${d.id}',
+        debtId: d.id,
+        date: d.occurredOn,
+        person: d.person,
+        walletId: d.walletId,
+        amount: d.direction == DebtDirection.lent ? -d.amount : d.amount,
+        kind: d.direction == DebtDirection.lent ? DharMoveKind.lent : DharMoveKind.borrowed,
+      ),
+    for (final p in payments)
+      if (byId[p.debtId] case final d?)
+        DharMove(
+          id: 'pay:${p.id}',
+          debtId: d.id,
+          date: p.paidOn,
+          person: d.person,
+          walletId: p.walletId ?? d.walletId,
+          amount: d.direction == DebtDirection.lent ? p.amount : -p.amount,
+          kind: d.direction == DebtDirection.lent ? DharMoveKind.paidBack : DharMoveKind.repaid,
+        ),
+  ];
+}

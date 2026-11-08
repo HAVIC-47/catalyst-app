@@ -15,11 +15,21 @@ import '../util/format.dart';
 import '../util/i18n.dart';
 import '../util/limits.dart';
 import '../util/money.dart';
+import 'dhar_screen.dart' show DebtForm;
 import '../widgets/mood_face.dart';
+import '../widgets/dhar_line.dart';
 import '../widgets/ui.dart';
 import '../widgets/wallet_picker.dart';
 
-enum EntryTab { money, mood, saving }
+enum EntryTab { money, mood, saving, dhar, day }
+
+String _tabLabel(EntryTab t) => switch (t) {
+      EntryTab.money => tr('Money'),
+      EntryTab.mood => tr('Mood'),
+      EntryTab.saving => tr('Saving'),
+      EntryTab.dhar => tr('Dhar'),
+      EntryTab.day => tr('Transactions'),
+    };
 
 /// A new entry. [mood] (1-5) starts the mood tab on that face (the mood widget).
 Future<void> openEntry(BuildContext context, {EntryTab tab = EntryTab.money, String? date, int? mood}) {
@@ -106,20 +116,27 @@ class _EntrySheetState extends State<EntrySheet> {
               ),
               Container(
                 decoration: BoxDecoration(border: Border(top: BorderSide(color: p.line), bottom: BorderSide(color: p.line))),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                // Five tabs share the width, so none is off the edge of a narrow phone.
                 child: Row(
                   children: [
                     for (final t in EntryTab.values)
-                      InkWell(
-                        onTap: () => setState(() => _tab = t),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          decoration: BoxDecoration(
-                            border: Border(bottom: BorderSide(color: _tab == t ? p.accent : Colors.transparent, width: 2)),
-                          ),
-                          child: Text(
-                            tr('${t.name[0].toUpperCase()}${t.name.substring(1)}'),
-                            style: bodyStyle(p, 14.5, weight: FontWeight.w500, color: _tab == t ? p.ink : p.muted(0.4)),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => setState(() => _tab = t),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
+                            decoration: BoxDecoration(
+                              border: Border(bottom: BorderSide(color: _tab == t ? p.accent : Colors.transparent, width: 2)),
+                            ),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                _tabLabel(t),
+                                maxLines: 1,
+                                style: bodyStyle(p, 14, weight: FontWeight.w500, color: _tab == t ? p.ink : p.muted(0.4)),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -133,6 +150,8 @@ class _EntrySheetState extends State<EntrySheet> {
                     EntryTab.money => _MoneyForm(dateKey: widget.dateKey),
                     EntryTab.mood => _MoodForm(dateKey: widget.dateKey, initialMood: widget.initialMood),
                     EntryTab.saving => _SavingForm(dateKey: widget.dateKey),
+                    EntryTab.dhar => DebtForm(date: widget.dateKey, onDone: () => Navigator.pop(context)),
+                    EntryTab.day => _DayList(dateKey: widget.dateKey, onAdd: () => setState(() => _tab = EntryTab.money)),
                   },
                 ),
               ),
@@ -1137,5 +1156,79 @@ class _TxnEditSheetState extends State<TxnEditSheet> {
         ),
       ),
     );
+  }
+}
+
+/// A calendar day's Transactions tab: that day's entries and dhar, with the day's totals.
+class _DayList extends StatelessWidget {
+  const _DayList({required this.dateKey, required this.onAdd});
+
+  final String dateKey;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final app = context.watch<AppState>();
+    final items = app.transactions.where((t) => t.occurredOn == dateKey).toList()..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+    final moves = dharMoves(app.debts, app.debtPayments).where((m) => m.date == dateKey).toList();
+    final shown = app.wallets.where((w) => !w.archived).length > 1;
+    final walletOf = walletNamer(app.wallets);
+    final byId = {for (final w in app.wallets) w.id: w.name};
+    final fallback = defaultWallet(app.wallets)?.id;
+    String? walletName(String? id) => shown ? tr(byId[id ?? fallback] ?? '') : null;
+    if (items.isEmpty && moves.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 30),
+        child: Column(children: [
+          Text(tr('Nothing on this day yet.'), style: bodyStyle(p, 14, color: p.muted(0.45))),
+          TextButton(onPressed: onAdd, child: Text(tr('Add an entry'), style: TextStyle(color: p.accent))),
+        ]),
+      );
+    }
+    double sum(Kind k) => items.where((t) => t.kind == k).fold<double>(0, (s, t) => s + t.amount);
+    final dIn = sum(Kind.income), dOut = sum(Kind.expense);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Wrap(spacing: 12, children: [
+        Text(tr('In {amount}', {'amount': formatCurrency(dIn)}), style: monoStyle(p, 12, color: p.income)),
+        Text(tr('Out {amount}', {'amount': formatCurrency(dOut)}), style: monoStyle(p, 12, color: p.expense)),
+        Text(tr('Net {amount}', {'amount': formatCurrency(dIn - dOut, sign: true)}), style: monoStyle(p, 12, color: dIn - dOut >= 0 ? p.income : p.expense)),
+      ]),
+      const SizedBox(height: 12),
+      CardBox(
+        padding: EdgeInsets.zero,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final (i, t) in items.indexed)
+            Container(
+              decoration: BoxDecoration(border: i == 0 ? null : Border(top: BorderSide(color: p.line))),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(t.note.isEmpty ? tr(t.categoryName) : t.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyStyle(p, 14, color: p.muted(0.85))),
+                    Text(
+                      [
+                        tr(t.categoryName),
+                        if (t.kind != Kind.saving && shown && walletOf(t) != null) tr(walletOf(t)!.name),
+                        if (t.place.isNotEmpty) t.place,
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: bodyStyle(p, 11.5, color: p.muted(0.4)),
+                    ),
+                  ]),
+                ),
+                Text(formatCurrency(t.kind == Kind.income ? t.amount : -t.amount, sign: true),
+                    style: monoStyle(p, 14, color: t.kind == Kind.income ? p.income : p.muted(0.8))),
+              ]),
+            ),
+          for (final (i, m) in moves.indexed) DharLine(move: m, wallet: walletName(m.walletId), divider: items.isNotEmpty || i > 0),
+        ]),
+      ),
+      if (moves.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Text(tr("Dhar moves money in and out of a wallet; it isn't income or spending."), style: bodyStyle(p, 11.5, color: p.muted(0.4))),
+      ],
+    ]);
   }
 }

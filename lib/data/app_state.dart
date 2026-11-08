@@ -1381,6 +1381,43 @@ class AppState extends ChangeNotifier {
     return d;
   }
 
+  /// A dhar record changed: who, which way, how much, when, the wallet or the note.
+  Future<void> editDebt(
+    String id, {
+    required String person,
+    required DebtDirection direction,
+    required double amount,
+    required String note,
+    required String? walletId,
+    required String occurredOn,
+    required String? dueOn,
+  }) async {
+    await db.updateDebt(id, {
+      'person': person,
+      'direction': direction.name,
+      'amount': amount,
+      'note': note,
+      'wallet_id': walletId,
+      'occurred_on': occurredOn,
+      'due_on': dueOn,
+    });
+    debts = [
+      for (final d in debts)
+        d.id == id
+            ? d.copyWith(
+                person: person,
+                direction: direction,
+                amount: amount,
+                note: note,
+                walletId: () => walletId,
+                occurredOn: occurredOn,
+                dueOn: () => dueOn,
+              )
+            : d
+    ];
+    notifyListeners();
+  }
+
   /// Settled or written off (closed), or reopened.
   Future<void> setDebtClosed(String id, bool closed) async {
     await db.updateDebt(id, {'closed': closed});

@@ -73,7 +73,7 @@ class _DharScreenState extends State<DharScreen> {
           if (!app.loading && !app.walletsReady)
             const UpdateNeeded(feature: 'Dhar')
           else ...[
-            const _NewDebt(),
+            const DebtForm(),
             if (!app.loading && open.isEmpty)
               CardBox(
                 margin: const EdgeInsets.only(bottom: 16),
@@ -142,14 +142,20 @@ class _DharScreenState extends State<DharScreen> {
   }
 }
 
-class _NewDebt extends StatefulWidget {
-  const _NewDebt();
+/// Adding a dhar record, or with [debt] changing one. [date] starts a new one on
+/// that day (a calendar day's Dhar tab); [onDone] runs after a save (and Cancel).
+class DebtForm extends StatefulWidget {
+  const DebtForm({super.key, this.debt, this.date, this.onDone});
+
+  final Debt? debt;
+  final String? date;
+  final VoidCallback? onDone;
 
   @override
-  State<_NewDebt> createState() => _NewDebtState();
+  State<DebtForm> createState() => _DebtFormState();
 }
 
-class _NewDebtState extends State<_NewDebt> {
+class _DebtFormState extends State<DebtForm> {
   final _person = TextEditingController();
   final _amount = TextEditingController();
   final _note = TextEditingController();
@@ -162,6 +168,18 @@ class _NewDebtState extends State<_NewDebt> {
   @override
   void initState() {
     super.initState();
+    final d = widget.debt;
+    if (d != null) {
+      _person.text = d.person;
+      _amount.text = groupNumber(d.amount).replaceAll(',', '');
+      _note.text = d.note;
+      _direction = d.direction;
+      _walletId = d.walletId;
+      _date = fromDateKey(d.occurredOn);
+      _due = d.dueOn == null ? null : fromDateKey(d.dueOn!);
+    } else if (widget.date != null) {
+      _date = fromDateKey(widget.date!);
+    }
     _person.addListener(() => setState(() {}));
     _amount.addListener(() => setState(() {}));
   }
@@ -187,16 +205,27 @@ class _NewDebtState extends State<_NewDebt> {
       if (!valid || _busy) return;
       setState(() => _busy = true);
       try {
+        final editing = widget.debt;
+        final value = (amount * 100).roundToDouble() / 100;
+        final due = _due == null ? null : toDateKey(_due!);
+        if (editing != null) {
+          await app.editDebt(editing.id,
+              person: _person.text.trim(), direction: _direction, amount: value, note: _note.text.trim(), walletId: wallet, occurredOn: toDateKey(_date), dueOn: due);
+          rememberWallet(wallet);
+          widget.onDone?.call();
+          return;
+        }
         await app.createDebt(
           person: _person.text.trim(),
           direction: _direction,
-          amount: (amount * 100).roundToDouble() / 100,
+          amount: value,
           note: _note.text.trim(),
           walletId: wallet,
           occurredOn: toDateKey(_date),
-          dueOn: _due == null ? null : toDateKey(_due!),
+          dueOn: due,
         );
         rememberWallet(wallet);
+        widget.onDone?.call();
         _person.clear();
         _amount.clear();
         _note.clear();
@@ -234,9 +263,7 @@ class _NewDebtState extends State<_NewDebt> {
       );
     }
 
-    return CardBox(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Column(
+    final form = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
@@ -279,10 +306,19 @@ class _NewDebtState extends State<_NewDebt> {
             child: TextField(controller: _note, inputFormatters: maxChars(Limits.note), decoration: InputDecoration(hintText: tr('What it was for'))),
           ),
           const SizedBox(height: 14),
-          PrimaryButton(expand: true, icon: LucideIcons.plus, label: tr('Add'), busy: _busy, onPressed: valid ? add : null),
+          if (widget.debt != null)
+            Row(children: [
+              Expanded(child: HairlineButton(height: 44, onPressed: widget.onDone, child: Text(tr('Cancel'), style: bodyStyle(p, 14, color: p.muted(0.8))))),
+              const SizedBox(width: 10),
+              Expanded(child: PrimaryButton(expand: true, label: tr('Save'), height: 44, busy: _busy, onPressed: valid ? add : null)),
+            ])
+          else
+            PrimaryButton(expand: true, icon: LucideIcons.plus, label: tr('Add'), busy: _busy, onPressed: valid ? add : null),
         ],
-      ),
-    );
+      );
+    // On the Dhar page it's a card; in a loan's Edit or a day's Dhar tab, just the fields.
+    if (widget.debt != null || widget.date != null) return form;
+    return CardBox(margin: const EdgeInsets.only(bottom: 16), child: form);
   }
 }
 
@@ -299,6 +335,7 @@ class _DebtRow extends StatefulWidget {
 class _DebtRowState extends State<_DebtRow> {
   final _amount = TextEditingController();
   bool _paying = false;
+  bool _editing = false;
   bool _history = false;
   bool _busy = false;
   String? _walletId;
@@ -407,6 +444,11 @@ class _DebtRowState extends State<_DebtRow> {
                   icon: Icon(LucideIcons.undo2, size: 14, color: p.muted(0.6)),
                   label: Text(tr('Reopen'), style: bodyStyle(p, 12, color: p.muted(0.6))),
                 ),
+              IconButton(
+                tooltip: tr('Edit'),
+                onPressed: () => setState(() => _editing = !_editing),
+                icon: Icon(LucideIcons.pencil, size: 16, color: p.muted(0.45)),
+              ),
               TrashButton(
                 tooltip: tr('Delete'),
                 onPressed: () async {
@@ -418,6 +460,13 @@ class _DebtRowState extends State<_DebtRow> {
                 },
               ),
             ]),
+            if (_editing)
+              Container(
+                margin: const EdgeInsets.only(top: 8, right: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line), color: p.inkA(0.02)),
+                child: DebtForm(debt: d, onDone: () => setState(() => _editing = false)),
+              ),
             if (!settled) ...[
               const SizedBox(height: 6),
               Wrap(children: [

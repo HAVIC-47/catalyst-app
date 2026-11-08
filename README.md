@@ -60,7 +60,11 @@ modern 64-bit phones, [`catalyst_1.7.1_arm64.apk`](https://github.com/HAVIC-47/c
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
 From 1.4.0 the app tells you when a new version is out: tap **Update** and the new APK downloads.
 
-**New in 1.7.1:** **Update goes straight to the download** — tapping it never lands on a release page to scroll
+**New in 1.8.0:** **edit any dhar** — the pen on it changes who, how much, the date, the wallet or the note. **Dhar shows in your transactions:** borrowing is money in and paying it back money out; lending is money out and
+getting it back money in (it moves your wallet, never your income or spending). And **a calendar day** now has five
+tabs: Money, Mood, Saving, **Dhar** (add one on that day) and **Transactions** (everything on that day).
+
+**1.7.1:** **Update goes straight to the download** — tapping it never lands on a release page to scroll
 through. And the app only tells you about a new version once its APK is up.
 
 **1.7.0:** **bought goes to expenses** — mark something on a to-buy list as bought and it joins that day's
@@ -175,7 +179,8 @@ pull down to refresh, or just reopen the app.
 - **Wallets** — where the money sits: Cash, bKash, Nagad and Bank to start (rename, add, archive). Each shows what's
   in it now; every entry picks its wallet; transfers move money between wallets without counting as spending, and
   a fee (a bKash cash-out) is logged as an expense.
-- **Dhar / baki** — money you lent or borrowed, grouped by person: part payments, settle in full, write off.
+- **Dhar / baki** — money you lent or borrowed, grouped by person: part payments, settle in full, write off, and
+  the pen to change any of it. It shows in the ledger too: borrowing in, paying it back out; lending out, getting it back in.
 - **Zakat calculator** — More → Zakat: your wallets and dhar come in by themselves; add cash elsewhere, gold (and
   its purity — 24K, 22K, 21K or 18K) and silver in bhori or grams, investments and debts due now. Gold and silver go
   at today's international prices (or type your own). It shows the nisab (silver or gold)

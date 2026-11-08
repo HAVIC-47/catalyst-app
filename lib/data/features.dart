@@ -32,6 +32,19 @@ class Release {
 
 /// What each release brought, newest first — add one for every version shipped.
 List<Release> releases() => [
+      Release('1.8.0', [
+        Feature(LucideIcons.pencil, tr('Edit dhar'), tr('Change who, how much, the date, the wallet or the note on any dhar, with the pen on it.')),
+        Feature(
+          LucideIcons.handCoins,
+          tr('Dhar in your transactions'),
+          tr('Borrowing shows as money in and paying it back as money out; lending is money out and getting it back is money in. It moves your wallet, not your income or spending.'),
+        ),
+        Feature(
+          LucideIcons.calendarDays,
+          tr('More in a calendar day'),
+          tr("Tap a day for Money, Mood, Saving, Dhar, and that day's Transactions."),
+        ),
+      ]),
       Release('1.7.1', [
         Feature(
           LucideIcons.download,

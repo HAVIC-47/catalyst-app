@@ -16,6 +16,7 @@ import '../util/i18n.dart';
 import '../util/money.dart';
 import '../util/range.dart';
 import '../widgets/ai_insights.dart';
+import '../widgets/dhar_line.dart';
 import '../widgets/ui.dart';
 import 'entry_sheet.dart';
 import 'price_sheet.dart';
@@ -148,9 +149,31 @@ class _LedgerScreenState extends State<LedgerScreen> {
     }
     final filtering = _activeFilters > 0 || words.isNotEmpty;
 
+    // Dhar next to the day's entries (borrowing +, paying back −; lending −, getting it
+    // back +), when no kind, category or amount filter is on: dhar is none of those.
+    final fallbackWallet = defaultWallet(wallets)?.id;
+    final walletName = {for (final w in wallets) w.id: w.name};
+    final dhar = _kind != null || _category.isNotEmpty || min != null || max != null
+        ? const <DharMove>[]
+        : dharMoves(app.debts, app.debtPayments).where((m) {
+            if (_wallet.isNotEmpty && (m.walletId ?? fallbackWallet) != _wallet) return false;
+            if (win != null && !inRange(m.date, win.$1, win.$2)) return false;
+            if (words.isNotEmpty) {
+              final h = [m.label, tr('Dhar'), 'dhar', '${m.amount.abs()}', fmt(fromDateKey(m.date), 'EEEE MMMM d yyyy')].join(' ').toLowerCase();
+              if (!words.every(h.contains)) return false;
+            }
+            return true;
+          }).toList();
+    final dharByDay = <String, List<DharMove>>{};
+    for (final m in dhar) {
+      (dharByDay[m.date] ??= []).add(m);
+    }
     final groups = <String, List<Txn>>{};
     for (final t in filtered) {
       (groups[t.occurredOn] ??= []).add(t);
+    }
+    for (final d in dharByDay.keys) {
+      groups.putIfAbsent(d, () => []);
     }
     final days = groups.keys.toList()..sort((a, b) => b.compareTo(a));
 
@@ -343,11 +366,19 @@ class _LedgerScreenState extends State<LedgerScreen> {
                 ],
               ),
             ),
-          if (!app.loading && app.transactions.isEmpty)
+          if (!app.loading && app.transactions.isEmpty && dhar.isEmpty)
             EmptyCard(tr('No transactions yet. Tap + Add or a calendar day.'))
-          else if (!app.loading && filtered.isEmpty)
+          else if (!app.loading && filtered.isEmpty && dhar.isEmpty)
             EmptyCard(tr('Nothing matches.'), action: TextButton(onPressed: _clearAll, child: Text(tr('Clear search & filters'), style: TextStyle(color: p.accent)))),
-          for (final day in days) _DayGroup(day: day, items: groups[day]!, catOf: catOf, walletOf: walletOf),
+          for (final day in days)
+            _DayGroup(
+              day: day,
+              items: groups[day]!,
+              dhar: dharByDay[day] ?? const [],
+              walletName: wallets.length > 1 ? (id) => tr(walletName[id ?? fallbackWallet] ?? '') : null,
+              catOf: catOf,
+              walletOf: walletOf,
+            ),
         ],
       ),
     );
@@ -355,10 +386,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
 }
 
 class _DayGroup extends StatelessWidget {
-  const _DayGroup({required this.day, required this.items, required this.catOf, required this.walletOf});
+  const _DayGroup({required this.day, required this.items, this.dhar = const [], this.walletName, required this.catOf, required this.walletOf});
 
   final String day;
   final List<Txn> items;
+  final List<DharMove> dhar;
+  final String Function(String?)? walletName;
   final Category? Function(Txn) catOf;
   final Wallet? Function(Txn) walletOf;
 
@@ -480,6 +513,7 @@ class _DayGroup extends StatelessWidget {
                 ],
               ),
             ),
+          for (final (i, m) in dhar.indexed) DharLine(move: m, wallet: walletName?.call(m.walletId), divider: items.isNotEmpty || i > 0),
         ],
       ),
     );
