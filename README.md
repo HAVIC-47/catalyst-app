@@ -4,11 +4,11 @@
 
 **Money meets _mood_.** Track every taka against how the day actually felt.
 
-[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.7.1-D4381C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.7.1/catalyst_1.7.1.apk)
+[![Download APK](https://img.shields.io/badge/Download-Catalyst%201.8.0-D4381C?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.8.0/catalyst_1.8.0.apk)
 &nbsp;
 [![Latest release](https://img.shields.io/github/v/release/HAVIC-47/catalyst-app?style=for-the-badge&color=11101F&label=version)](https://github.com/HAVIC-47/catalyst-app/releases/latest)
 
-**Direct download (1.7.1):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.7.1/catalyst_1.7.1.apk · every version: [releases](https://github.com/HAVIC-47/catalyst-app/releases)
+**Direct download (1.8.0):** https://github.com/HAVIC-47/catalyst-app/releases/download/v1.8.0/catalyst_1.8.0.apk · every version: [releases](https://github.com/HAVIC-47/catalyst-app/releases)
 
 Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https://catalyst-hishab.vercel.app)
 
@@ -47,14 +47,14 @@ Android 7.0+ · Flutter · same account and data as the [Catalyst web app](https
 
 ## Install
 
-1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.7.1/catalyst_1.7.1.apk)**
+1. On your phone, open the **[direct download link](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.8.0/catalyst_1.8.0.apk)**
    (or download it on a computer and send it over USB, Drive, Telegram…).
-2. Open the downloaded `catalyst_1.7.1.apk` (the file is named after its version). Android asks once to allow
+2. Open the downloaded `catalyst_1.8.0.apk` (the file is named after its version). Android asks once to allow
    installs from your browser or file manager — allow it, then tap **Install**.
 3. Log in with your Catalyst account, or create one.
 
 The download is a universal APK (~58 MB) that runs on any Android phone. A smaller build for
-modern 64-bit phones, [`catalyst_1.7.1_arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.7.1/catalyst_1.7.1_arm64.apk) (~22 MB), is attached to every
+modern 64-bit phones, [`catalyst_1.8.0_arm64.apk`](https://github.com/HAVIC-47/catalyst-app/releases/download/v1.8.0/catalyst_1.8.0_arm64.apk) (~22 MB), is attached to every
 [release](https://github.com/HAVIC-47/catalyst-app/releases).
 
 **Updating:** install the newer APK over the old one — your data lives in the cloud, nothing is lost.
